@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Movie + Clock Loop</title>
+
+<style>
+@font-face {
+    font-family: 'GenEiNuGothic';
+    src: url('GenEiNuGothic-EB.ttf') format('truetype');
+}
+
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+#videoScreen,
+#clockScreen {
+    width: 100%;
+    height: 100%;
+}
+
+video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: black;
+}
+
+#clockScreen {
+    display: none;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0057d8;
+    color: white;
+    justify-content: center;
+    align-items: center;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+
+#clockVideo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: black;
+}
+
+#clock {
+    position: relative;
+    z-index: 10;
+
+    width: 100%;
+    height: 100%;
+
+    color: white;
+
+    font-family: 'GenEiNuGothic', sans-serif;
+
+    text-shadow:
+        0 0 10px rgba(0,0,0,0.2),
+        0 0 30px rgba(0,0,0,0.2),
+        0 0 60px rgba(0,0,0,0.2);
+}
+
+#date {
+    position: absolute;
+
+    left: 50%;
+    top: calc(50% - 40vh);
+
+    transform: translateX(-50%);
+
+    font-size: 10vh;
+
+    white-space: nowrap;
+}
+
+#time {
+    position: absolute;
+
+    left: 50%;
+    top: 55%;
+
+    transform: translate(-50%, -50%);
+
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+
+    white-space: nowrap;
+
+    font-size: 50vh;
+    font-variant-numeric: tabular-nums;
+}
+
+#imageScreen {
+    display: none;
+    width: 100%;
+    height: 100%;
+    background: black;
+    justify-content: center;
+    align-items: center;
+}
+
+#image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+#adminScreen {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 32px;
+    background: #f2f4f1;
+    color: #18231f;
+    font-family: 'GenEiNuGothic', sans-serif;
+}
+
+.adminHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    max-width: 1100px;
+    margin: 0 auto 24px;
+    border-bottom: 2px solid #18231f;
+    padding-bottom: 16px;
+}
+
+.adminHeader h1 { margin: 0; font-size: 28px; }
+.adminActions { display: flex; gap: 8px; }
+.adminActions button, .addItemButton {
+    border: 0;
+    padding: 11px 16px;
+    background: #176b52;
+    color: white;
+    font: inherit;
+    cursor: pointer;
+}
+.adminActions button:hover, .addItemButton:hover { background: #10523e; }
+.adminActions button.secondaryAction { background: #344c42; }
+.adminActions button.secondaryAction:hover { background: #23372d; }
+#chooseAssetFolder {
+    max-width: 100%;
+    min-height: 44px;
+    padding: 11px 16px;
+    border: 0;
+    background: #344c42;
+    color: #fff;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.4;
+    cursor: pointer;
+}
+#chooseAssetFolder:hover { background: #23372d; }
+#assetFolderInput { display: none; }
+.assetFolderToolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    max-width: 1100px;
+    margin: 0 auto 16px;
+    padding: 12px 16px;
+    background: white;
+    border-left: 4px solid #344c42;
+}
+.assetFolderToolbar span { color: #53615a; overflow-wrap: anywhere; }
+.assetChoices { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-height: 280px; overflow: auto; padding-bottom: 10px; }
+.assetPicker { min-width: 0; }
+.assetPicker > summary { list-style: none; }
+.assetPicker > summary::-webkit-details-marker { display: none; }
+.assetPicker[open] { grid-column: 1 / -1; }
+.assetPicker[open] .assetChoices { margin-top: 6px; padding: 8px; border: 1px solid #c5cec8; background: white; }
+.assetChoice {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 6px;
+    border: 1px solid #c5cec8;
+    background: white;
+    color: #18231f;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+}
+.assetChoice:hover { border-color: #176b52; background: #f2f7f3; }
+.assetChoicePreview { width: 88px; height: 52px; overflow: hidden; background: #18231f; }
+.assetChoicePreview img, .assetChoicePreview video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.assetChoicePreview img { background: white; }
+.assetChoiceName { overflow-wrap: anywhere; font-size: 13px; }
+.assetChoiceEmpty { grid-column: 1 / -1; margin: 0; color: #53615a; }
+
+#playlistEditor {
+    display: grid;
+    gap: 10px;
+    max-width: 1100px;
+    margin: 0 auto 16px;
+}
+
+.playlistRow {
+    display: grid;
+    grid-template-columns: 40px minmax(100px, 150px) minmax(280px, 1fr) 150px auto;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background: white;
+    border-left: 4px solid #176b52;
+}
+.playlistRow.dragging { opacity: .4; }
+.playlistRow.dropTarget { outline: 2px dashed #176b52; outline-offset: -2px; }
+
+.playlistRow input, .playlistRow select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid #aab4ae;
+    border-radius: 0;
+    background: white;
+    color: #18231f;
+    font: inherit;
+}
+
+.rowNumber { font-variant-numeric: tabular-nums; font-weight: bold; cursor: grab; }
+.rowNumber:active { cursor: grabbing; }
+.assetField { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; }
+.assetPreview { display: grid; width: 92px; height: 58px; place-items: center; overflow: hidden; background: #18231f; color: white; font: 12px sans-serif; }
+.assetPreview img, .assetPreview video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.assetPreview img { background: white; }
+.assetSelection { display: grid; gap: 6px; min-width: 0; }
+.assetName { overflow-wrap: anywhere; color: #53615a; font-size: 13px; }
+.assetSelectButton { justify-self: start; padding: 7px 10px; border: 1px solid #aab4ae; background: white; color: #18231f; font: inherit; cursor: pointer; }
+.assetSelectButton:hover { border-color: #176b52; color: #10523e; }
+.rowOrder { display: flex; gap: 4px; }
+.rowOrder button {
+    width: 34px;
+    height: 34px;
+    border: 1px solid #aab4ae;
+    background: white;
+    color: #18231f;
+    cursor: pointer;
+}
+.rowOrder button:disabled { opacity: .35; cursor: default; }
+.removeItemButton { color: #9b3029 !important; }
+.removeItemButton svg { display: block; width: 18px; height: 18px; margin: auto; }
+.durationField { position: relative; }
+.durationField input { padding-right: 44px; }
+.durationField span { position: absolute; right: 10px; top: 9px; color: #53615a; pointer-events: none; }
+.addItemButton { display: block; max-width: 1100px; margin: auto; }
+
+@media (max-width: 700px) {
+    #adminScreen { padding: 16px; }
+    .adminHeader { align-items: flex-start; flex-direction: column; }
+    .playlistRow { grid-template-columns: 32px minmax(0, 1fr) auto; }
+    .playlistRow .rowNumber { grid-row: span 3; }
+    .assetField { grid-column: 2 / 4; grid-row: 2; grid-template-columns: 92px minmax(0, 1fr); }
+    .rowOrder { grid-column: 2; grid-row: 3; }
+    .playlistRow .durationField { grid-column: 3; grid-row: 3; }
+}
+</style>
+</head>
+
+<body>
+
+<div id="videoScreen">
+    <video id="video" autoplay muted>
+        <source src="movie.mp4" type="video/mp4">
+    </video>
+</div>
+
+<div id="imageScreen">
+    <img id="image" src="" alt="Image">
+</div>
+
+<div id="clockScreen">
+
+    <video id="clockVideo" muted autoplay preload="auto" playsinline>
+        <source src="clock.mp4" type="video/mp4">
+    </video>
+
+    <div id="clock">
+        <div id="date"></div>
+
+        <div id="time">
+            <span id="hours">00</span>
+            <span id="colon">:</span>
+            <span id="minutes">00</span>
+        </div>
+    </div>
+
+</div>
+
+<main id="adminScreen" aria-label="サイネージ管理">
+    <header class="adminHeader">
+        <h1>サイネージ管理</h1>
+        <div class="adminActions">
+            <button id="savePlaylistFile" class="secondaryAction" type="button">設定をファイルに保存</button>
+            <button id="loadPlaylistFile" class="secondaryAction" type="button">設定ファイルを読み込む</button>
+            <input id="playlistFileInput" type="file" accept=".json,application/json" hidden>
+            <button id="returnToSignage" type="button">サイネージにもどる</button>
+        </div>
+    </header>
+    <div class="assetFolderToolbar">
+        <button id="chooseAssetFolder" type="button">新しい素材をフォルダーから追加</button>
+        <span id="selectedFolderLabel">登録済み素材を表示中。新しい素材はフォルダーから追加できます。</span>
+        <input id="assetFolderInput" type="file" webkitdirectory directory multiple>
+    </div>
+    <section id="playlistEditor" aria-label="表示順と秒数"></section>
+    <button class="addItemButton" id="addItem" type="button">＋ 項目を追加</button>
+</main>
+
+<script>
+const video = document.getElementById('video');
+const videoScreen = document.getElementById('videoScreen');
+const imageScreen = document.getElementById('imageScreen');
+const image = document.getElementById('image');
+const clockScreen = document.getElementById('clockScreen');
+const clockVideo = document.getElementById('clockVideo');
+
+const hours = document.getElementById('hours');
+const minutes = document.getElementById('minutes');
+const colon = document.getElementById('colon');
+
+const defaultPlaylist = [
+    { type: 'video', src: 'movie.mp4', duration: null },
+    { type: 'clock', src: 'clock.mp4', duration: null },
+    { type: 'image', src: 'image_ecc1.png', duration: 15 },
+    { type: 'clock', src: 'clock.mp4', duration: null },
+    { type: 'video', src: 'movie_min1.mp4', duration: null },
+    { type: 'clock', src: 'clock.mp4', duration: null },
+    { type: 'image', src: 'image_ecc2.png', duration: 15 },
+    { type: 'clock', src: 'clock.mp4', duration: null },
+    { type: 'image', src: 'image_min.png', duration: 15 },
+    { type: 'clock', src: 'clock.mp4', duration: null },
+    { type: 'image', src: 'image_ecc3.png', duration: 15 },
+    { type: 'clock', src: 'clock.mp4', duration: null }
+];
+
+function loadPlaylist() {
+    try {
+        const saved = JSON.parse(localStorage.getItem('signagePlaylist'));
+        if (Array.isArray(saved) && saved.length) return saved;
+    } catch (error) {
+        console.warn('保存済みの表示順を読み込めませんでした。', error);
+    }
+    return defaultPlaylist.map(item => ({ ...item }));
+}
+
+let playlistSequence = loadPlaylist();
+const adminScreen = document.getElementById('adminScreen');
+const playlistEditor = document.getElementById('playlistEditor');
+const assetFolderInput = document.getElementById('assetFolderInput');
+const selectedFolderLabel = document.getElementById('selectedFolderLabel');
+let selectedAssets = [];
+let folderWasSelected = false;
+const assetObjectUrls = new Map();
+let isManaging = false;
+
+let sequenceIndex = 0;
+let playbackTimer = null;
+
+const dateEl = document.getElementById('date');
+
+function ordinal(n) {
+    if (n % 10 === 1 && n % 100 !== 11) return 'st';
+    if (n % 10 === 2 && n % 100 !== 12) return 'nd';
+    if (n % 10 === 3 && n % 100 !== 13) return 'rd';
+    return 'th';
+}
+
+function updateClock() {
+    const now = new Date();
+
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+
+    hours.textContent = h;
+    minutes.textContent = m;
+
+    colon.style.opacity =
+        (now.getSeconds() % 2 === 0) ? '1' : '0';
+
+    const weekday = now.toLocaleString('en-US', {
+        weekday: 'long'
+    });
+
+    const month = now.toLocaleString('en-US', {
+        month: 'long'
+    });
+
+    const day = now.getDate();
+
+    dateEl.textContent =
+        `${weekday}, ${month} ${day}${ordinal(day)}`;
+}
+
+function savePlaylist() {
+    localStorage.setItem('signagePlaylist', JSON.stringify(playlistSequence));
+}
+
+function validatePlaylistFile(data) {
+    if (!data || !Array.isArray(data.playlist) || data.playlist.length === 0) return false;
+    return data.playlist.every(item => {
+        const validType = ['image', 'video', 'clock', 'clock1', 'clock2'].includes(item?.type);
+        const validSource = typeof item?.src === 'string';
+        const validDuration = item?.duration == null || (Number.isFinite(Number(item.duration)) && Number(item.duration) > 0);
+        return validType && validSource && validDuration;
+    });
+}
+
+function createPlaylistFile() {
+    return {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        playlist: playlistSequence
+    };
+}
+
+function downloadPlaylistFile(data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'signage-playlist.json';
+    link.click();
+    URL.revokeObjectURL(url);
+}
+
+async function exportPlaylistFile() {
+    const data = createPlaylistFile();
+    if (window.showSaveFilePicker) {
+        try {
+            const handle = await window.showSaveFilePicker({
+                suggestedName: 'signage-playlist.json',
+                types: [{ description: 'サイネージ設定', accept: { 'application/json': ['.json'] } }]
+            });
+            const writable = await handle.createWritable();
+            await writable.write(JSON.stringify(data, null, 2));
+            await writable.close();
+            return;
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            console.warn('保存先を指定できないため、ダウンロードに切り替えます。', error);
+        }
+    }
+    downloadPlaylistFile(data);
+}
+
+async function importPlaylistFile(file) {
+    try {
+        const data = JSON.parse(await file.text());
+        if (!validatePlaylistFile(data)) throw new Error('設定ファイルの形式が正しくありません。');
+        playlistSequence = data.playlist.map(item => ({
+            type: item.type,
+            src: item.src,
+            duration: item.duration == null ? null : Number(item.duration)
+        }));
+        sequenceIndex = 0;
+        savePlaylist();
+        renderEditor();
+    } catch (error) {
+        alert(error.message || '設定ファイルを読み込めませんでした。');
+    }
+}
+
+function getAssetKind(path) {
+    if (/\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(path)) return 'image';
+    if (/\.(mp4|m4v|mov|webm|ogv|ogg)$/i.test(path)) return 'video';
+    return '';
+}
+
+function resolveAssetUrl(path) {
+    return assetObjectUrls.get(path) || path;
+}
+
+function createAssetPreview(path, kind, className, onDurationLoaded = null) {
+    const preview = document.createElement('div');
+    preview.className = className;
+    if (!path || !kind) {
+        preview.textContent = '素材なし';
+        return preview;
+    }
+
+    if (kind === 'image') {
+        const thumbnail = document.createElement('img');
+        thumbnail.src = resolveAssetUrl(path);
+        thumbnail.alt = '';
+        thumbnail.onerror = () => { preview.textContent = '画像なし'; };
+        preview.append(thumbnail);
+    } else {
+        const thumbnail = document.createElement('video');
+        thumbnail.src = resolveAssetUrl(path);
+        thumbnail.muted = true;
+        thumbnail.playsInline = true;
+        thumbnail.preload = 'metadata';
+        thumbnail.onloadedmetadata = () => {
+            if (Number.isFinite(thumbnail.duration) && thumbnail.duration > 0) {
+                thumbnail.currentTime = Math.min(0.1, thumbnail.duration / 2);
+                onDurationLoaded?.(thumbnail.duration);
+            }
+        };
+        thumbnail.onseeked = () => thumbnail.pause();
+        thumbnail.onerror = () => {
+            preview.textContent = '映像なし';
+            onDurationLoaded?.(null);
+        };
+        preview.append(thumbnail);
+    }
+    return preview;
+}
+
+function getAvailableAssets(kind) {
+    if (folderWasSelected) return selectedAssets.filter(asset => asset.kind === kind);
+    const paths = [...new Set(playlistSequence.map(item => item.src).filter(Boolean))];
+    return paths.filter(path => getAssetKind(path) === kind).map(path => ({ path, kind }));
+}
+
+function renderAssetChoices(item, list) {
+    const kind = item.type === 'image' ? 'image' : 'video';
+    const assets = getAvailableAssets(kind);
+    list.replaceChildren();
+    if (!assets.length) {
+        const empty = document.createElement('p');
+        empty.className = 'assetChoiceEmpty';
+        empty.textContent = '該当するファイルがありません';
+        list.append(empty);
+        return;
+    }
+    for (const asset of assets) {
+        const choice = document.createElement('button');
+        choice.type = 'button';
+        choice.className = 'assetChoice';
+        choice.append(createAssetPreview(asset.path, kind, 'assetChoicePreview'));
+        const name = document.createElement('span');
+        name.className = 'assetChoiceName';
+        name.textContent = asset.path;
+        choice.append(name);
+        choice.addEventListener('click', () => {
+            if (!playlistSequence.includes(item)) return;
+            item.src = asset.path;
+            savePlaylist();
+            renderEditor();
+        });
+        list.append(choice);
+    }
+}
+
+function loadAssetFolder(files) {
+    for (const url of assetObjectUrls.values()) URL.revokeObjectURL(url);
+    assetObjectUrls.clear();
+    const allFiles = Array.from(files);
+    folderWasSelected = allFiles.length > 0;
+    const folderName = allFiles[0]?.webkitRelativePath.split('/')[0] || '';
+    selectedAssets = allFiles.map(file => {
+        const path = file.webkitRelativePath.split('/').slice(1).join('/');
+        return { file, path, kind: getAssetKind(path) };
+    }).filter(asset => asset.path && asset.kind);
+    for (const asset of selectedAssets) {
+        assetObjectUrls.set(asset.path, URL.createObjectURL(asset.file));
+    }
+    selectedFolderLabel.textContent = folderWasSelected
+        ? `${folderName} (${selectedAssets.length} 件)`
+        : '未選択 (登録済み素材を使用できます)';
+    renderEditor();
+}
+
+function isClockType(type) {
+    return type === 'clock' || type === 'clock1' || type === 'clock2';
+}
+
+function advancePlaylist() {
+    if (isManaging || !playlistSequence.length) return;
+    sequenceIndex = (sequenceIndex + 1) % playlistSequence.length;
+    showCurrentItem();
+}
+
+function scheduleAdvance(duration) {
+    clearTimeout(playbackTimer);
+    playbackTimer = setTimeout(advancePlaylist, duration * 1000);
+}
+
+function showCurrentItem() {
+    if (isManaging || !playlistSequence.length) return;
+    sequenceIndex = (sequenceIndex + playlistSequence.length) % playlistSequence.length;
+    clearTimeout(playbackTimer);
+
+    const item = playlistSequence[sequenceIndex];
+    video.pause();
+    clockVideo.pause();
+    videoScreen.style.display = 'none';
+    imageScreen.style.display = 'none';
+    clockScreen.style.display = 'none';
+
+    if (isClockType(item.type)) {
+        clockScreen.style.display = 'flex';
+        updateClock();
+        const clockPath = item.src || (item.type === 'clock2' ? 'clock2.mp4' : 'clock.mp4');
+        clockVideo.src = resolveAssetUrl(clockPath);
+        clockVideo.load();
+        clockVideo.onloadedmetadata = () => {
+            if (playlistSequence[sequenceIndex] !== item || isManaging) return;
+            const duration = Number(item.duration) > 0 ? Number(item.duration) : clockVideo.duration;
+            if (Number.isFinite(duration) && duration > 0) scheduleAdvance(duration);
+        };
+        clockVideo.play().catch(() => {});
+        return;
+    }
+
+    if (item.type === 'image') {
+        imageScreen.style.display = 'flex';
+        image.src = resolveAssetUrl(item.src);
+        scheduleAdvance(Math.max(1, Number(item.duration) || 15));
+        return;
+    }
+
+    videoScreen.style.display = 'block';
+    video.src = resolveAssetUrl(item.src);
+    video.load();
+    video.currentTime = 0;
+    if (Number(item.duration) > 0) scheduleAdvance(Number(item.duration));
+    video.play().catch(() => {});
+}
+
+video.addEventListener('ended', () => {
+    if (playlistSequence[sequenceIndex]?.type === 'video' && !Number(playlistSequence[sequenceIndex].duration)) advancePlaylist();
+});
+
+function renderEditor() {
+    playlistEditor.replaceChildren();
+    playlistSequence.forEach((item, index) => {
+        const row = document.createElement('div');
+        row.className = 'playlistRow';
+        row.addEventListener('dragstart', event => {
+            if (!event.target.closest('.rowNumber')) {
+                event.preventDefault();
+                return;
+            }
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(index));
+            row.classList.add('dragging');
+        });
+        row.addEventListener('dragover', event => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            row.classList.add('dropTarget');
+        });
+        row.addEventListener('dragleave', event => {
+            if (!row.contains(event.relatedTarget)) row.classList.remove('dropTarget');
+        });
+        row.addEventListener('drop', event => {
+            event.preventDefault();
+            row.classList.remove('dropTarget');
+            const from = Number(event.dataTransfer.getData('text/plain'));
+            if (Number.isInteger(from)) moveItem(from, index);
+        });
+        row.addEventListener('dragend', () => row.classList.remove('dragging', 'dropTarget'));
+
+        const number = document.createElement('span');
+        number.className = 'rowNumber';
+        number.textContent = String(index + 1).padStart(2, '0');
+        number.draggable = true;
+        number.title = 'ドラッグして順番変更';
+
+        const type = document.createElement('select');
+        [['image', '画像'], ['video', '映像'], ['clock', '時計']].forEach(([value, label]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            type.append(option);
+        });
+        type.value = isClockType(item.type) ? 'clock' : item.type;
+        type.addEventListener('change', () => {
+            item.type = type.value;
+            item.src = type.value === 'clock' ? 'clock.mp4' : type.value === 'video' ? 'movie.mp4' : 'image_ecc1.png';
+            item.duration = type.value === 'image' ? 15 : null;
+            renderEditor();
+            savePlaylist();
+        });
+
+        let durationInput = null;
+        const assetField = document.createElement('div');
+        assetField.className = 'assetField';
+        assetField.append(createAssetPreview(
+            item.src,
+            type.value === 'image' ? 'image' : 'video',
+            'assetPreview',
+            seconds => {
+                if (!Number(item.duration) && durationInput) {
+                    durationInput.placeholder = Number.isFinite(seconds) ? seconds.toFixed(2) : '不明';
+                }
+            }
+        ));
+        const selection = document.createElement('div');
+        selection.className = 'assetSelection';
+        const assetName = document.createElement('span');
+        assetName.className = 'assetName';
+        assetName.textContent = item.src || '素材未指定';
+        const assetPicker = document.createElement('details');
+        assetPicker.className = 'assetPicker';
+        const selectAsset = document.createElement('summary');
+        selectAsset.className = 'assetSelectButton';
+        selectAsset.textContent = 'ファイルを選ぶ';
+        const choices = document.createElement('div');
+        choices.className = 'assetChoices';
+        assetPicker.addEventListener('toggle', () => {
+            if (assetPicker.open) renderAssetChoices(item, choices);
+        });
+        assetPicker.append(selectAsset, choices);
+        selection.append(assetName, assetPicker);
+        assetField.append(selection);
+
+        const durationWrap = document.createElement('label');
+        durationWrap.className = 'durationField';
+        durationInput = document.createElement('input');
+        durationInput.type = 'number';
+        durationInput.min = '1';
+        durationInput.step = '1';
+        durationInput.value = Number(item.duration) > 0 ? String(item.duration) : '';
+        durationInput.placeholder = type.value === 'image' ? '15' : '読込中';
+        durationInput.setAttribute('aria-label', '表示秒数');
+        durationInput.addEventListener('change', () => {
+            item.duration = durationInput.value === '' ? null : Math.max(1, Number(durationInput.value));
+            if (type.value === 'image' && item.duration === null) item.duration = 15;
+            savePlaylist();
+        });
+        const seconds = document.createElement('span');
+        seconds.textContent = '秒';
+        durationWrap.append(durationInput, seconds);
+
+        const controls = document.createElement('div');
+        controls.className = 'rowOrder';
+        const up = document.createElement('button');
+        up.type = 'button';
+        up.textContent = '↑';
+        up.title = '上へ';
+        up.disabled = index === 0;
+        up.addEventListener('click', () => moveItem(index, index - 1));
+        const down = document.createElement('button');
+        down.type = 'button';
+        down.textContent = '↓';
+        down.title = '下へ';
+        down.disabled = index === playlistSequence.length - 1;
+        down.addEventListener('click', () => moveItem(index, index + 1));
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'removeItemButton';
+        remove.title = '削除';
+        remove.setAttribute('aria-label', '削除');
+        remove.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-.9 14H5.9L5 6m4 4v7m6-7v7"/></svg>';
+        remove.addEventListener('click', () => {
+            playlistSequence.splice(index, 1);
+            if (!playlistSequence.length) playlistSequence.push({ ...defaultPlaylist[0] });
+            sequenceIndex = Math.min(sequenceIndex, playlistSequence.length - 1);
+            renderEditor();
+            savePlaylist();
+        });
+        controls.append(up, down, remove);
+        row.append(number, type, assetField, durationWrap, controls);
+        playlistEditor.append(row);
+    });
+}
+
+function moveItem(from, to) {
+    if (to < 0 || to >= playlistSequence.length) return;
+    const [item] = playlistSequence.splice(from, 1);
+    playlistSequence.splice(to, 0, item);
+    renderEditor();
+    savePlaylist();
+}
+
+function openManager() {
+    isManaging = true;
+    clearTimeout(playbackTimer);
+    video.pause();
+    clockVideo.pause();
+    videoScreen.style.display = 'none';
+    imageScreen.style.display = 'none';
+    clockScreen.style.display = 'none';
+    adminScreen.style.display = 'block';
+    renderEditor();
+}
+
+function closeManager() {
+    isManaging = false;
+    adminScreen.style.display = 'none';
+    savePlaylist();
+    showCurrentItem();
+}
+
+document.getElementById('returnToSignage').addEventListener('click', closeManager);
+document.getElementById('savePlaylistFile').addEventListener('click', exportPlaylistFile);
+document.getElementById('loadPlaylistFile').addEventListener('click', () => document.getElementById('playlistFileInput').click());
+document.getElementById('playlistFileInput').addEventListener('change', event => {
+    const file = event.target.files[0];
+    if (file) importPlaylistFile(file);
+    event.target.value = '';
+});
+document.getElementById('chooseAssetFolder').addEventListener('click', () => assetFolderInput.click());
+assetFolderInput.addEventListener('change', () => loadAssetFolder(assetFolderInput.files));
+document.getElementById('addItem').addEventListener('click', () => {
+    playlistSequence.push({ type: 'image', src: 'image_ecc1.png', duration: 15 });
+    renderEditor();
+    savePlaylist();
+});
+
+setInterval(updateClock, 1000);
+updateClock();
+showCurrentItem();
+
+document.addEventListener('keydown', event => {
+    const editingField = event.target.closest('input, textarea, select, [contenteditable="true"]');
+    if (event.key.toLowerCase() === 's' && !event.repeat && !editingField) {
+        event.preventDefault();
+        if (isManaging) closeManager();
+        else openManager();
+        return;
+    }
+    if (!isManaging && event.code === 'Space') {
+        event.preventDefault();
+        advancePlaylist();
+    }
+});
+
+document.addEventListener('click', event => {
+    if (!isManaging && event.target.closest('#videoScreen, #imageScreen, #clockScreen')) advancePlaylist();
+});
+
+
+</script>
+
+</body>
+</html>
