@@ -156,6 +156,18 @@ document.addEventListener('keydown', event => {
 async function start() {
     updateClock();
     setInterval(updateClock, 1000);
+    if (new URLSearchParams(location.search).get('preview') === '1') {
+        window.addEventListener('message', event => {
+            if (event.origin !== location.origin || event.source !== parent) return;
+            if (event.data?.type !== 'signage-preview-playlist' || !Array.isArray(event.data.playlist) || !event.data.playlist.length) return;
+            playlist = event.data.playlist;
+            sequenceIndex = 0;
+            loadError.style.display = 'none';
+            showCurrent();
+        });
+        parent.postMessage({ type: 'signage-preview-ready' }, location.origin);
+        return;
+    }
     try {
         const response = await fetch('./signage-playlist.json', { cache: 'no-store' });
         if (!response.ok) throw new Error(`設定JSONの読み込みに失敗しました (${response.status})`);

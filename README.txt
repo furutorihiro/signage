@@ -8,15 +8,26 @@ signage-playlist.json   再生順、素材名、秒数を保存する設定フ�
 画像・映像ファイル      index.html と同じフォルダーに置く
 
 ■ 再生
-GitHub Pagesで公開された index.html を開くと再生が始まります。
-設定を取得するため、ローカルで確認するときもWebサーバー経由で開いてください。
+公開ページ: https://furutorihiro.github.io/signage/
+公開管理画面: https://furutorihiro.github.io/signage/admin.html
+GitHub Pagesで index.html を開くと、公開中の signage-playlist.json に沿って再生します。
 動画・画像は設定JSONに記載したファイル名を使い、index.html と同じ階層から読み込みます。
+サイネージ上をクリックするかスペースキーを押すと次の項目へ進み、通常は設定順に自動再生します。
 
-サイネージ上をクリックするかスペースキーを押すと、次の項目へ進みます。
-通常は設定された順序で自動再生を繰り返します。
+■ push前にローカル確認
+1. リポジトリ内の start-local.cmd をダブルクリックします。Pythonが必要です。
+2. ローカルサーバーが起動し、http://127.0.0.1:8000/admin.html がブラウザーで自動的に開きます。
+3. 管理画面はローカルの signage-playlist.json と同階層の素材を読み込みます。
+4. 「サイネージをプレビュー」を押すと、管理画面内で再生します。未保存の変更もプレビューへ反映されます。
+5. 確定する場合は「JSONに保存」を押してリポジトリ内の設定を更新します。
 
-■ 管理
-admin.html を開きます。サイネージから管理ページへ移動する必要はありません。
+start-local.cmd はポート8000のサーバーがすでに動作していれば再利用します。
+サーバーを終了するには、サーバー用に開いた黒い画面で Ctrl+C を押します。
+Pythonがない場合はVS CodeのLive Serverなどでリポジトリを配信し、配信先の admin.html を開いてください。
+file:// でHTMLを直接開く方法ではJSONや素材を読み込めません。
+
+■ 管理画面の操作
+管理画面はサイネージとは独立しています。ローカルでは上記の起動方法、オンラインでは公開管理画面を開きます。
 
 ・種類: 画像、映像、時計
 ・素材: ファイル名だけ入力。素材は index.html と同じ階層に置く
@@ -26,11 +37,11 @@ admin.html を開きます。サイネージから管理ページへ移動する
 ・追加: 「＋ 項目を追加」
 
 ■ GitHubへ設定を反映
-1. GitHub Pagesで admin.html を開きます。公開中の signage-playlist.json が読み込まれます。
-2. GitHub Desktopで作業するPCのリポジトリ内にある signage-playlist.json を「設定JSONを開く」から選びます。
-3. 順番、ファイル名、秒数を編集し、「JSONに保存」を押して同じファイルへ保存します。
-4. GitHub Desktopで signage-playlist.json の変更をcommitし、pushします。
-5. GitHub Pagesへ反映されたら index.html が新しい順番で再生します。
+1. ローカル管理画面で確認済みの設定を保存します。
+2. GitHub Desktopで signage-playlist.json と追加・変更した素材ファイルをcommitし、pushします。
+3. Pagesへの反映後、公開ページを再読み込みすると新しい設定で再生します。
+
+オンライン管理画面から直接変更したい場合は「設定JSONを開く」で作業PC内のリポジトリのJSONを開いてください。公開JSONだけを編集してもリポジトリには保存されません。
 
 File System Access APIに対応するブラウザーでは、JSONを開いた後、選んだ同じファイルへ保存できます。
 非対応ブラウザーではJSONがダウンロードされるため、リポジトリ内の signage-playlist.json を置き換えてください。

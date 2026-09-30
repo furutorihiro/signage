@@ -16,6 +16,13 @@ h1 { margin: 0; font-size: 28px; }
 button { font: inherit; cursor: pointer; }
 .actionButton, .addButton { min-height: 42px; padding: 9px 14px; border: 0; background: #176b52; color: #fff; }
 .actionButton:hover, .addButton:hover { background: #10523e; }
+.actionLink { display: inline-flex; align-items: center; text-decoration: none; }
+.previewPanel { margin: 0 0 18px; padding: 12px; background: #18231f; }
+.previewPanel[hidden] { display: none; }
+.previewPanelHeader { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; color: #fff; }
+.previewPanelHeader h2 { margin: 0; font-size: 18px; }
+.previewPanelHeader button { padding: 7px 10px; border: 1px solid #aab4ae; background: transparent; color: #fff; }
+#previewFrame { display: block; width: 100%; height: min(60vh, 620px); min-height: 280px; border: 0; background: #000; }
 .actionButton.secondary { background: #344c42; }
 .actionButton.secondary:hover { background: #23372d; }
 #fileInput { display: none; }
@@ -80,10 +87,18 @@ button { font: inherit; cursor: pointer; }
         <div class="actions">
             <button class="actionButton secondary" id="openFileButton" type="button">設定JSONを開く</button>
             <button class="actionButton" id="saveFileButton" type="button">JSONに保存</button>
+            <button class="actionButton" id="previewButton" type="button" aria-expanded="false" aria-controls="previewPanel">サイネージをプレビュー</button>
             <input id="fileInput" type="file" accept=".json,application/json">
         </div>
     </header>
     <p class="note">素材ファイルは index.html と同じフォルダーに置き、ファイル名だけを指定してください。保存した signage-playlist.json をGitHub Desktopでcommit/pushすると、GitHub Pagesのサイネージに反映されます。</p>
+    <section class="previewPanel" id="previewPanel" hidden aria-label="サイネージプレビュー">
+        <div class="previewPanelHeader">
+            <h2>サイネージプレビュー</h2>
+            <button id="closePreviewButton" type="button">閉じる</button>
+        </div>
+        <iframe id="previewFrame" title="現在のプレイリストのプレビュー" allow="autoplay"></iframe>
+    </section>
     <p id="status" role="status"></p>
     <section id="playlist" aria-label="再生順"></section>
     <button class="addButton" id="addItem" type="button">＋ 項目を追加</button>
@@ -101,6 +116,9 @@ const defaultPlaylist = [
 const playlistElement = document.getElementById('playlist');
 const statusElement = document.getElementById('status');
 const fileInput = document.getElementById('fileInput');
+const previewPanel = document.getElementById('previewPanel');
+const previewFrame = document.getElementById('previewFrame');
+const previewButton = document.getElementById('previewButton');
 let playlist = defaultPlaylist.map(item => ({ ...item }));
 let settingsHandle = null;
 let dirty = false;
@@ -113,6 +131,29 @@ function setStatus(message, isError = false) {
 function setDirty() {
     dirty = true;
     setStatus('未保存の変更があります。JSONに保存してください。');
+    sendPreviewPlaylist();
+}
+
+function sendPreviewPlaylist() {
+    if (!previewFrame.contentWindow || previewFrame.dataset.ready !== 'true') return;
+    previewFrame.contentWindow.postMessage({
+        type: 'signage-preview-playlist',
+        playlist: playlist.map(item => ({ ...item }))
+    }, location.origin);
+}
+
+function togglePreview(forceOpen = null) {
+    const shouldOpen = forceOpen ?? previewPanel.hidden;
+    previewPanel.hidden = !shouldOpen;
+    previewButton.setAttribute('aria-expanded', String(shouldOpen));
+    previewButton.textContent = shouldOpen ? 'プレビューを閉じる' : 'サイネージをプレビュー';
+    if (!shouldOpen) return;
+    if (previewFrame.dataset.requested !== 'true') {
+        previewFrame.dataset.requested = 'true';
+        previewFrame.src = './index.html?preview=1';
+    } else {
+        sendPreviewPlaylist();
+    }
 }
 
 function kindFor(item) {
@@ -350,6 +391,7 @@ function render() {
         row.append(handle, type, mediaField, durationField, controls);
         playlistElement.append(row);
     });
+    sendPreviewPlaylist();
 }
 
 function moveItem(from, to) {
@@ -432,13 +474,20 @@ async function openSettingsFile() {
 }
 
 async function loadPublishedSettings() {
+    if (location.protocol === 'file:') {
+        setStatus('ローカル確認では file:// ではなく start-local.cmd を起動し、http://127.0.0.1:8000/admin.html を開いてください。', true);
+        render();
+        return;
+    }
     try {
         const response = await fetch('./signage-playlist.json', { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (!validateSettings(data)) throw new Error('形式が正しくありません');
         playlist = normalizePlaylist(data.playlist);
-        setStatus('GitHub Pages上の signage-playlist.json を読み込みました。設定JSONを開くとリポジトリ内のファイルを直接編集できます。');
+        setStatus(location.hostname === '127.0.0.1' || location.hostname === 'localhost'
+            ? 'ローカルの signage-playlist.json を読み込みました。保存後、「サイネージをプレビュー」で変更を確認できます。'
+            : '公開中の signage-playlist.json を読み込みました。ローカルJSONを開いて編集することもできます。');
     } catch (error) {
         setStatus(`公開中のJSONを読み込めませんでした (${error.message})。設定JSONを開くか、新規項目から作成してください。`, true);
     }
@@ -447,6 +496,15 @@ async function loadPublishedSettings() {
 
 document.getElementById('openFileButton').addEventListener('click', openSettingsFile);
 document.getElementById('saveFileButton').addEventListener('click', saveSettings);
+previewButton.addEventListener('click', () => togglePreview());
+document.getElementById('closePreviewButton').addEventListener('click', () => togglePreview(false));
+window.addEventListener('message', event => {
+    if (event.origin !== location.origin || event.source !== previewFrame.contentWindow) return;
+    if (event.data?.type === 'signage-preview-ready') {
+        previewFrame.dataset.ready = 'true';
+        sendPreviewPlaylist();
+    }
+});
 fileInput.addEventListener('change', async event => {
     const file = event.target.files[0];
     if (!file) return;
