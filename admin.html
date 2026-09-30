@@ -35,6 +35,19 @@ button { font: inherit; cursor: pointer; }
 .preview img { background: #fff; }
 .mediaInput { display: grid; gap: 4px; min-width: 0; }
 .mediaInput small { color: #53615a; overflow-wrap: anywhere; }
+.filePicker { min-width: 0; }
+.filePicker > summary { display: inline-block; width: fit-content; padding: 7px 10px; border: 1px solid #aab4ae; background: #fff; color: #18231f; cursor: pointer; list-style: none; }
+.filePicker > summary::-webkit-details-marker { display: none; }
+.filePicker > summary:hover { border-color: #176b52; color: #10523e; }
+.filePicker[open] { grid-column: 1 / -1; }
+.filePicker[open] .fileChoices { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 7px; max-height: 230px; overflow: auto; margin-top: 6px; padding: 8px; border: 1px solid #c5cec8; background: #fff; }
+.fileChoice { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 8px; min-width: 0; padding: 6px; border: 1px solid #c5cec8; background: #fff; color: #18231f; text-align: left; font: inherit; cursor: pointer; }
+.fileChoice:hover { border-color: #176b52; background: #f2f7f3; }
+.fileChoicePreview { width: 72px; height: 44px; overflow: hidden; background: #18231f; }
+.fileChoicePreview img, .fileChoicePreview video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.fileChoicePreview img { background: #fff; }
+.fileChoiceName { overflow-wrap: anywhere; font-size: 12px; }
+.fileChoiceEmpty { margin: 0; color: #53615a; }
 .durationField { position: relative; }
 .durationField input { padding-right: 42px !important; }
 .durationField span { position: absolute; right: 10px; top: 9px; color: #53615a; pointer-events: none; }
@@ -143,6 +156,41 @@ function updatePreview(item, preview, filename) {
     preview.append(media);
 }
 
+function renderFileChoices(item, list, filenameInput, preview, picker) {
+    const extensionPattern = kindFor(item) === 'image'
+        ? /\.(png|jpe?g|gif|webp|avif|bmp)$/i
+        : /\.(mp4|m4v|mov|webm|ogv|ogg)$/i;
+    const candidates = knownMedia.filter(filename => extensionPattern.test(filename));
+    list.replaceChildren();
+    if (!candidates.length) {
+        const empty = document.createElement('p');
+        empty.className = 'fileChoiceEmpty';
+        empty.textContent = 'この種類の登録済み素材はありません';
+        list.append(empty);
+        return;
+    }
+    candidates.forEach(candidate => {
+        const choice = document.createElement('button');
+        choice.type = 'button';
+        choice.className = 'fileChoice';
+        const choicePreview = document.createElement('div');
+        choicePreview.className = 'fileChoicePreview';
+        updatePreview(item, choicePreview, candidate);
+        const name = document.createElement('span');
+        name.className = 'fileChoiceName';
+        name.textContent = candidate;
+        choice.append(choicePreview, name);
+        choice.addEventListener('click', () => {
+            item.src = candidate;
+            filenameInput.value = candidate;
+            updatePreview(item, preview, candidate);
+            picker.open = false;
+            setDirty();
+        });
+        list.append(choice);
+    });
+}
+
 function validateSettings(data) {
     if (!data || !Array.isArray(data.playlist) || data.playlist.length === 0) return false;
     return data.playlist.every(item => {
@@ -224,14 +272,13 @@ function render() {
         const preview = document.createElement('div');
         preview.className = 'preview';
         updatePreview(item, preview, item.src);
-        const mediaInput = document.createElement('label');
+        const mediaInput = document.createElement('div');
         mediaInput.className = 'mediaInput';
         const filename = document.createElement('input');
         filename.type = 'text';
         filename.value = item.src;
         filename.setAttribute('aria-label', '同じフォルダー内のファイル名');
         filename.placeholder = item.type === 'image' ? '例: image_ecc1.png' : '例: movie.mp4';
-        filename.setAttribute('list', 'mediaFiles');
         filename.addEventListener('input', () => {
             const source = safeFilename(filename.value);
             if (source) item.src = source;
@@ -251,7 +298,17 @@ function render() {
         });
         const hint = document.createElement('small');
         hint.textContent = 'index.html と同じ階層';
-        mediaInput.append(filename, hint);
+        const filePicker = document.createElement('details');
+        filePicker.className = 'filePicker';
+        const pickerToggle = document.createElement('summary');
+        pickerToggle.textContent = `${item.type === 'image' ? '画像' : '映像'}を選ぶ (${knownMedia.filter(candidate => item.type === 'image' ? /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(candidate) : /\.(mp4|m4v|mov|webm|ogv|ogg)$/i.test(candidate)).length})`;
+        const fileChoices = document.createElement('div');
+        fileChoices.className = 'fileChoices';
+        filePicker.addEventListener('toggle', () => {
+            if (filePicker.open) renderFileChoices(item, fileChoices, filename, preview, filePicker);
+        });
+        filePicker.append(pickerToggle, fileChoices);
+        mediaInput.append(filename, hint, filePicker);
         mediaField.append(preview, mediaInput);
 
         const durationField = document.createElement('label');
