@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-09-29T11:59:16.918Z",
+  "savedAt": "2026-09-30T07:40:30.890Z",
   "playlist": [
     {
       "type": "clock",
@@ -9,18 +9,8 @@
     },
     {
       "type": "image",
-      "src": "image_min.png",
+      "src": "image_ecc1.png",
       "duration": 15
-    },
-    {
-      "type": "clock",
-      "src": "260929あき.mp4",
-      "duration": null
-    },
-    {
-      "type": "video",
-      "src": "movie_min1.mp4",
-      "duration": null
     }
   ]
 }

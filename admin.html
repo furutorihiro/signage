@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>サイネージ設定</title>
+<style>
+@font-face { font-family: 'GenEiNuGothic'; src: url('./GenEiNuGothic-EB.ttf') format('truetype'); }
+:root { color-scheme: light; font-family: 'GenEiNuGothic', sans-serif; background: #f2f4f1; color: #18231f; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+main { width: min(1120px, calc(100% - 40px)); margin: 0 auto; padding: 28px 0 48px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-bottom: 18px; margin-bottom: 18px; border-bottom: 2px solid #18231f; }
+h1 { margin: 0; font-size: 28px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; cursor: pointer; }
+.actionButton, .addButton { min-height: 42px; padding: 9px 14px; border: 0; background: #176b52; color: #fff; }
+.actionButton:hover, .addButton:hover { background: #10523e; }
+.actionButton.secondary { background: #344c42; }
+.actionButton.secondary:hover { background: #23372d; }
+#fileInput { display: none; }
+.note { margin: 0 0 16px; padding: 12px 14px; border-left: 4px solid #c88626; background: #fff; color: #39453e; line-height: 1.6; }
+#status { min-height: 24px; margin: 0 0 12px; color: #53615a; }
+#status[data-error="true"] { color: #9b3029; }
+#playlist { display: grid; gap: 9px; }
+.playlistRow { display: grid; grid-template-columns: 36px 120px minmax(260px, 1fr) 148px auto; align-items: center; gap: 10px; padding: 12px; background: #fff; border-left: 4px solid #176b52; }
+.playlistRow.dragging { opacity: .4; }
+.playlistRow.dropTarget { outline: 2px dashed #176b52; outline-offset: -2px; }
+.playlistRow input, .playlistRow select { width: 100%; min-width: 0; padding: 9px; border: 1px solid #aab4ae; border-radius: 0; background: #fff; color: #18231f; font: inherit; }
+.orderHandle { font-variant-numeric: tabular-nums; font-weight: bold; cursor: grab; }
+.orderHandle:active { cursor: grabbing; }
+.mediaField { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; }
+.preview { display: grid; width: 96px; height: 60px; place-items: center; overflow: hidden; background: #18231f; color: white; font: 12px sans-serif; }
+.preview img, .preview video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.preview img { background: #fff; }
+.mediaInput { display: grid; gap: 4px; min-width: 0; }
+.mediaInput small { color: #53615a; overflow-wrap: anywhere; }
+.durationField { position: relative; }
+.durationField input { padding-right: 42px !important; }
+.durationField span { position: absolute; right: 10px; top: 9px; color: #53615a; pointer-events: none; }
+.rowControls { display: flex; gap: 4px; }
+.rowControls button { width: 36px; height: 36px; border: 1px solid #aab4ae; background: #fff; color: #18231f; }
+.rowControls button:disabled { opacity: .35; cursor: default; }
+.rowControls .removeButton { color: #9b3029; }
+.rowControls svg { display: block; width: 18px; height: 18px; margin: auto; }
+.addButton { margin-top: 14px; }
+@media (max-width: 760px) {
+    main { width: min(100% - 24px, 600px); padding-top: 18px; }
+    header { align-items: flex-start; flex-direction: column; }
+    h1 { font-size: 24px; }
+    .actions { width: 100%; }
+    .actionButton { flex: 1 1 150px; }
+    .playlistRow { grid-template-columns: 30px minmax(0, 1fr) auto; gap: 8px; }
+    .orderHandle { grid-row: span 3; }
+    .playlistRow > select { grid-column: 2; }
+    .mediaField { grid-column: 2 / 4; grid-row: 2; grid-template-columns: 84px minmax(0, 1fr); }
+    .preview { width: 84px; height: 54px; }
+    .durationField { grid-column: 2; grid-row: 3; }
+    .rowControls { grid-column: 3; grid-row: 3; }
+}
+</style>
+</head>
+<body>
+<main>
+    <header>
+        <h1>サイネージ設定</h1>
+        <div class="actions">
+            <button class="actionButton secondary" id="openFileButton" type="button">設定JSONを開く</button>
+            <button class="actionButton" id="saveFileButton" type="button">JSONに保存</button>
+            <input id="fileInput" type="file" accept=".json,application/json">
+        </div>
+    </header>
+    <p class="note">素材ファイルは index.html と同じフォルダーに置き、ファイル名だけを指定してください。保存した signage-playlist.json をGitHub Desktopでcommit/pushすると、GitHub Pagesのサイネージに反映されます。</p>
+    <p id="status" role="status"></p>
+    <section id="playlist" aria-label="再生順"></section>
+    <button class="addButton" id="addItem" type="button">＋ 項目を追加</button>
+</main>
+<script>
+const knownMedia = [
+    '260929あき.mp4', 'movie.mp4', 'movie_min1.mp4',
+    'image_ecc1.png', 'image_ecc2.png', 'image_ecc3.png', 'image_min.png'
+];
+const defaultPlaylist = [
+    { type: 'video', src: 'movie.mp4', duration: null },
+    { type: 'clock', src: '260929あき.mp4', duration: null },
+    { type: 'image', src: 'image_ecc1.png', duration: 15 }
+];
+const playlistElement = document.getElementById('playlist');
+const statusElement = document.getElementById('status');
+const fileInput = document.getElementById('fileInput');
+let playlist = defaultPlaylist.map(item => ({ ...item }));
+let settingsHandle = null;
+let dirty = false;
+
+function setStatus(message, isError = false) {
+    statusElement.textContent = message;
+    statusElement.dataset.error = String(isError);
+}
+
+function setDirty() {
+    dirty = true;
+    setStatus('未保存の変更があります。JSONに保存してください。');
+}
+
+function kindFor(item) {
+    return item.type === 'image' ? 'image' : 'video';
+}
+
+function safeFilename(value) {
+    const filename = value.trim().replace(/^\.\//, '');
+    if (!filename || filename === '.' || filename === '..' || /[\\/]/.test(filename)) return '';
+    return filename;
+}
+
+function mediaUrl(filename) {
+    return `./${encodeURIComponent(filename)}`;
+}
+
+function updatePreview(item, preview, filename) {
+    preview.replaceChildren();
+    const kind = kindFor(item);
+    const safeSource = safeFilename(filename);
+    if (!safeSource) {
+        preview.textContent = 'ファイル名';
+        return;
+    }
+    if (kind === 'image') {
+        const img = document.createElement('img');
+        img.alt = '';
+        img.src = mediaUrl(safeSource);
+        img.onerror = () => { preview.textContent = '画像なし'; };
+        preview.append(img);
+        return;
+    }
+    const media = document.createElement('video');
+    media.muted = true;
+    media.playsInline = true;
+    media.preload = 'metadata';
+    media.src = mediaUrl(safeSource);
+    media.onloadedmetadata = () => { media.currentTime = Math.min(.1, media.duration / 2); };
+    media.onseeked = () => media.pause();
+    media.onerror = () => { preview.textContent = '映像なし'; };
+    preview.append(media);
+}
+
+function validateSettings(data) {
+    if (!data || !Array.isArray(data.playlist) || data.playlist.length === 0) return false;
+    return data.playlist.every(item => {
+        const typeOk = ['image', 'video', 'clock', 'clock1', 'clock2'].includes(item?.type);
+        const sourceOk = typeof item?.src === 'string' && safeFilename(item.src) === item.src;
+        const durationOk = item?.duration == null || (Number.isFinite(Number(item.duration)) && Number(item.duration) > 0);
+        return typeOk && sourceOk && durationOk;
+    });
+}
+
+function normalizePlaylist(items) {
+    return items.map(item => ({
+        type: item.type,
+        src: safeFilename(item.src),
+        duration: item.duration == null ? null : Number(item.duration)
+    }));
+}
+
+function render() {
+    playlistElement.replaceChildren();
+    playlist.forEach((item, index) => {
+        const row = document.createElement('div');
+        row.className = 'playlistRow';
+        row.addEventListener('dragstart', event => {
+            if (!event.target.closest('.orderHandle')) { event.preventDefault(); return; }
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(index));
+            row.classList.add('dragging');
+        });
+        row.addEventListener('dragover', event => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            row.classList.add('dropTarget');
+        });
+        row.addEventListener('dragleave', event => {
+            if (!row.contains(event.relatedTarget)) row.classList.remove('dropTarget');
+        });
+        row.addEventListener('drop', event => {
+            event.preventDefault();
+            row.classList.remove('dropTarget');
+            const from = Number(event.dataTransfer.getData('text/plain'));
+            if (Number.isInteger(from) && from >= 0 && from < playlist.length) moveItem(from, index);
+        });
+        row.addEventListener('dragend', () => row.classList.remove('dragging', 'dropTarget'));
+
+        const handle = document.createElement('span');
+        handle.className = 'orderHandle';
+        handle.draggable = true;
+        handle.title = 'ドラッグして順番変更';
+        handle.textContent = String(index + 1).padStart(2, '0');
+
+        const type = document.createElement('select');
+        type.setAttribute('aria-label', '表示の種類');
+        [['image', '画像'], ['video', '映像'], ['clock', '時計']].forEach(([value, label]) => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            type.append(option);
+        });
+        type.value = ['clock', 'clock1', 'clock2'].includes(item.type) ? 'clock' : item.type;
+        type.addEventListener('change', () => {
+            item.type = type.value;
+            if (type.value === 'image') {
+                item.src = 'image_ecc1.png';
+                item.duration = 15;
+            } else if (type.value === 'clock') {
+                item.src = '260929あき.mp4';
+                item.duration = null;
+            } else {
+                item.src = 'movie.mp4';
+                item.duration = null;
+            }
+            setDirty();
+            render();
+        });
+
+        const mediaField = document.createElement('div');
+        mediaField.className = 'mediaField';
+        const preview = document.createElement('div');
+        preview.className = 'preview';
+        updatePreview(item, preview, item.src);
+        const mediaInput = document.createElement('label');
+        mediaInput.className = 'mediaInput';
+        const filename = document.createElement('input');
+        filename.type = 'text';
+        filename.value = item.src;
+        filename.setAttribute('aria-label', '同じフォルダー内のファイル名');
+        filename.placeholder = item.type === 'image' ? '例: image_ecc1.png' : '例: movie.mp4';
+        filename.setAttribute('list', 'mediaFiles');
+        filename.addEventListener('input', () => {
+            const source = safeFilename(filename.value);
+            if (source) item.src = source;
+            updatePreview(item, preview, filename.value);
+            setDirty();
+        });
+        filename.addEventListener('change', () => {
+            const source = safeFilename(filename.value);
+            if (!source) {
+                filename.value = item.src;
+                setStatus('ファイル名だけを入力してください。フォルダー名やパスは不要です。', true);
+                return;
+            }
+            item.src = source;
+            filename.value = source;
+            setDirty();
+        });
+        const hint = document.createElement('small');
+        hint.textContent = 'index.html と同じ階層';
+        mediaInput.append(filename, hint);
+        mediaField.append(preview, mediaInput);
+
+        const durationField = document.createElement('label');
+        durationField.className = 'durationField';
+        const duration = document.createElement('input');
+        duration.type = 'number';
+        duration.min = '1';
+        duration.step = '1';
+        duration.value = item.duration == null ? '' : String(item.duration);
+        duration.placeholder = item.type === 'image' ? '15' : '動画の長さ';
+        duration.setAttribute('aria-label', '表示秒数');
+        duration.addEventListener('change', () => {
+            item.duration = duration.value ? Math.max(1, Number(duration.value)) : (item.type === 'image' ? 15 : null);
+            duration.value = item.duration == null ? '' : String(item.duration);
+            setDirty();
+        });
+        const unit = document.createElement('span');
+        unit.textContent = '秒';
+        durationField.append(duration, unit);
+
+        const controls = document.createElement('div');
+        controls.className = 'rowControls';
+        const up = document.createElement('button');
+        up.type = 'button'; up.textContent = '↑'; up.title = '上へ'; up.disabled = index === 0;
+        up.addEventListener('click', () => moveItem(index, index - 1));
+        const down = document.createElement('button');
+        down.type = 'button'; down.textContent = '↓'; down.title = '下へ'; down.disabled = index === playlist.length - 1;
+        down.addEventListener('click', () => moveItem(index, index + 1));
+        const remove = document.createElement('button');
+        remove.type = 'button'; remove.title = '削除'; remove.setAttribute('aria-label', '削除'); remove.className = 'removeButton';
+        remove.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-.9 14H5.9L5 6m4 4v7m6-7v7"/></svg>';
+        remove.addEventListener('click', () => {
+            playlist.splice(index, 1);
+            if (!playlist.length) playlist.push({ ...defaultPlaylist[0] });
+            setDirty();
+            render();
+        });
+        controls.append(up, down, remove);
+        row.append(handle, type, mediaField, durationField, controls);
+        playlistElement.append(row);
+    });
+}
+
+function moveItem(from, to) {
+    if (to < 0 || to >= playlist.length) return;
+    const [item] = playlist.splice(from, 1);
+    playlist.splice(to, 0, item);
+    setDirty();
+    render();
+}
+
+function settingsData() {
+    return { version: 1, savedAt: new Date().toISOString(), playlist };
+}
+
+async function writeToHandle(handle) {
+    const writable = await handle.createWritable();
+    await writable.write(`${JSON.stringify(settingsData(), null, 2)}\n`);
+    await writable.close();
+    dirty = false;
+    setStatus(`保存しました: ${handle.name}`);
+}
+
+function downloadSettings() {
+    const blob = new Blob([`${JSON.stringify(settingsData(), null, 2)}\n`], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'signage-playlist.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    dirty = false;
+    setStatus('signage-playlist.json をダウンロードしました。リポジトリ内の同名ファイルに置き換えてください。');
+}
+
+async function saveSettings() {
+    try {
+        if (settingsHandle) {
+            const permission = await settingsHandle.requestPermission({ mode: 'readwrite' });
+            if (permission === 'granted') return await writeToHandle(settingsHandle);
+            settingsHandle = null;
+        }
+        if (window.showSaveFilePicker) {
+            settingsHandle = await window.showSaveFilePicker({
+                suggestedName: 'signage-playlist.json',
+                types: [{ description: 'サイネージ設定JSON', accept: { 'application/json': ['.json'] } }]
+            });
+            return await writeToHandle(settingsHandle);
+        }
+        downloadSettings();
+    } catch (error) {
+        if (error.name !== 'AbortError') setStatus(`保存できませんでした: ${error.message}`, true);
+    }
+}
+
+async function loadSettingsFile(file) {
+    const data = JSON.parse(await file.text());
+    if (!validateSettings(data)) throw new Error('設定JSONの形式が正しくありません。ファイル名は同じ階層の名前だけ指定できます。');
+    playlist = normalizePlaylist(data.playlist);
+    dirty = false;
+    render();
+    setStatus(`${file.name} を読み込みました。編集後にJSONへ保存してください。`);
+}
+
+async function openSettingsFile() {
+    try {
+        if (window.showOpenFilePicker) {
+            const [handle] = await window.showOpenFilePicker({
+                multiple: false,
+                types: [{ description: 'サイネージ設定JSON', accept: { 'application/json': ['.json'] } }]
+            });
+            const file = await handle.getFile();
+            await loadSettingsFile(file);
+            settingsHandle = handle;
+            return;
+        }
+        fileInput.click();
+    } catch (error) {
+        if (error.name !== 'AbortError') setStatus(`開けませんでした: ${error.message}`, true);
+    }
+}
+
+async function loadPublishedSettings() {
+    try {
+        const response = await fetch('./signage-playlist.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!validateSettings(data)) throw new Error('形式が正しくありません');
+        playlist = normalizePlaylist(data.playlist);
+        setStatus('GitHub Pages上の signage-playlist.json を読み込みました。設定JSONを開くとリポジトリ内のファイルを直接編集できます。');
+    } catch (error) {
+        setStatus(`公開中のJSONを読み込めませんでした (${error.message})。設定JSONを開くか、新規項目から作成してください。`, true);
+    }
+    render();
+}
+
+document.getElementById('openFileButton').addEventListener('click', openSettingsFile);
+document.getElementById('saveFileButton').addEventListener('click', saveSettings);
+fileInput.addEventListener('change', async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try { await loadSettingsFile(file); }
+    catch (error) { setStatus(error.message || 'JSONを読み込めませんでした。', true); }
+    event.target.value = '';
+});
+document.getElementById('addItem').addEventListener('click', () => {
+    playlist.push({ type: 'image', src: 'image_ecc1.png', duration: 15 });
+    setDirty();
+    render();
+});
+const mediaFiles = document.createElement('datalist');
+mediaFiles.id = 'mediaFiles';
+knownMedia.forEach(filename => {
+    const option = document.createElement('option');
+    option.value = filename;
+    mediaFiles.append(option);
+});
+document.body.append(mediaFiles);
+loadPublishedSettings();
+</script>
+</body>
+</html>
