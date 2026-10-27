@@ -10,79 +10,49 @@
     src: url('./GenEiNuGothic-EB.ttf') format('truetype');
 }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-#videoScreen, #clockScreen, #imageScreen { width: 100%; height: 100%; }
+#videoScreen, #imageScreen, #sceneScreen { width: 100%; height: 100%; }
 video { width: 100%; height: 100%; object-fit: contain; background: #000; }
-#clockScreen { display: none; position: relative; overflow: hidden; background: #0057d8; color: #fff; justify-content: center; align-items: center; }
-#clockVideo { position: absolute; inset: 0; }
-#clock { position: relative; z-index: 1; width: 100%; height: 100%; color: #fff; font-family: 'GenEiNuGothic', sans-serif; text-shadow: 0 0 10px rgba(0,0,0,.2), 0 0 30px rgba(0,0,0,.2), 0 0 60px rgba(0,0,0,.2); }
-#date { position: absolute; left: 50%; top: calc(50% - 40vh); transform: translateX(-50%); font-size: 10vh; white-space: nowrap; }
-#time { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); display: flex; white-space: nowrap; font-size: 50vh; font-variant-numeric: tabular-nums; }
 #imageScreen { display: none; justify-content: center; align-items: center; background: #000; }
 #image { width: 100%; height: 100%; object-fit: contain; }
+#sceneScreen { display: none; position: fixed; inset: 0; background: #000; }
+#sceneFrame { display: block; width: 100%; height: 100%; border: 0; }
 #loadError { display: none; position: fixed; inset: auto 16px 16px; z-index: 10; padding: 12px 16px; background: rgba(0,0,0,.8); color: white; font: 16px sans-serif; }
 </style>
 </head>
 <body>
 <div id="videoScreen"><video id="video" autoplay muted playsinline></video></div>
 <div id="imageScreen"><img id="image" alt=""></div>
-<div id="clockScreen">
-    <video id="clockVideo" muted autoplay preload="auto" playsinline></video>
-    <div id="clock"><div id="date"></div><div id="time"><span id="hours">00</span><span id="colon">:</span><span id="minutes">00</span></div></div>
-</div>
+<div id="sceneScreen"><iframe id="sceneFrame" title="サイネージシーン" allow="autoplay"></iframe></div>
 <div id="loadError" role="status"></div>
 <script>
 const video = document.getElementById('video');
 const videoScreen = document.getElementById('videoScreen');
 const imageScreen = document.getElementById('imageScreen');
 const image = document.getElementById('image');
-const clockScreen = document.getElementById('clockScreen');
-const clockVideo = document.getElementById('clockVideo');
+const sceneScreen = document.getElementById('sceneScreen');
+const sceneFrame = document.getElementById('sceneFrame');
 const loadError = document.getElementById('loadError');
-const hours = document.getElementById('hours');
-const minutes = document.getElementById('minutes');
-const colon = document.getElementById('colon');
 
 const fallbackPlaylist = [
     { type: 'video', src: 'movie.mp4', duration: null },
-    { type: 'clock', src: '260929あき.mp4', duration: null },
+    { type: 'clock', src: 'clock.html', duration: null },
     { type: 'image', src: 'image_ecc1.png', duration: 15 },
-    { type: 'clock', src: '260929あき.mp4', duration: null },
+    { type: 'weather', src: 'weather.html', duration: 15 },
+    { type: 'clock', src: 'clock.html', duration: null },
     { type: 'video', src: 'movie_min1.mp4', duration: null },
-    { type: 'clock', src: '260929あき.mp4', duration: null },
+    { type: 'clock', src: 'clock.html', duration: null },
     { type: 'image', src: 'image_ecc2.png', duration: 15 },
-    { type: 'clock', src: '260929あき.mp4', duration: null },
+    { type: 'clock', src: 'clock.html', duration: null },
     { type: 'image', src: 'image_min.png', duration: 15 },
-    { type: 'clock', src: '260929あき.mp4', duration: null },
+    { type: 'clock', src: 'clock.html', duration: null },
     { type: 'image', src: 'image_ecc3.png', duration: 15 },
-    { type: 'clock', src: '260929あき.mp4', duration: null }
+    { type: 'clock', src: 'clock.html', duration: null }
 ];
 
 let playlist = [];
 let sequenceIndex = 0;
 let advanceTimer = null;
 let advancing = false;
-
-function ordinal(day) {
-    if (day % 10 === 1 && day % 100 !== 11) return 'st';
-    if (day % 10 === 2 && day % 100 !== 12) return 'nd';
-    if (day % 10 === 3 && day % 100 !== 13) return 'rd';
-    return 'th';
-}
-
-function updateClock() {
-    const now = new Date();
-    hours.textContent = String(now.getHours()).padStart(2, '0');
-    minutes.textContent = String(now.getMinutes()).padStart(2, '0');
-    colon.style.opacity = now.getSeconds() % 2 === 0 ? '1' : '0';
-    const weekday = now.toLocaleString('en-US', { weekday: 'long' });
-    const month = now.toLocaleString('en-US', { month: 'long' });
-    const day = now.getDate();
-    document.getElementById('date').textContent = `${weekday}, ${month} ${day}${ordinal(day)}`;
-}
-
-function isClock(item) {
-    return ['clock', 'clock1', 'clock2'].includes(item.type);
-}
 
 function mediaUrl(filename) {
     return `./${encodeURIComponent(filename)}`;
@@ -105,22 +75,17 @@ function showCurrent() {
     if (!playlist.length) return;
     clearTimeout(advanceTimer);
     video.pause();
-    clockVideo.pause();
     videoScreen.style.display = 'none';
     imageScreen.style.display = 'none';
-    clockScreen.style.display = 'none';
+    sceneScreen.style.display = 'none';
     const item = playlist[sequenceIndex];
 
-    if (isClock(item)) {
-        clockScreen.style.display = 'flex';
-        updateClock();
-        clockVideo.src = mediaUrl(item.src);
-        clockVideo.load();
-        clockVideo.onloadedmetadata = () => {
-            if (playlist[sequenceIndex] !== item) return;
-            scheduleAdvance(Number(item.duration) > 0 ? Number(item.duration) : clockVideo.duration);
-        };
-        clockVideo.play().catch(() => {});
+    if (item.type === 'clock' || item.type === 'weather') {
+        sceneScreen.style.display = 'block';
+        const scenePath = item.src || (item.type === 'clock' ? 'clock.html' : 'weather.html');
+        sceneFrame.src = mediaUrl(scenePath);
+        if (Number(item.duration) > 0) scheduleAdvance(Number(item.duration));
+        else if (item.type === 'weather') scheduleAdvance(15);
         return;
     }
 
@@ -143,7 +108,18 @@ video.addEventListener('ended', () => {
 });
 
 document.addEventListener('click', event => {
-    if (event.target.closest('#videoScreen, #imageScreen, #clockScreen')) advance();
+    if (event.target.closest('#videoScreen, #imageScreen, #sceneScreen')) advance();
+});
+
+window.addEventListener('message', event => {
+    if (event.origin !== location.origin || event.source !== sceneFrame.contentWindow) return;
+    if (event.data?.type === 'signage-scene-next') {
+        advance();
+        return;
+    }
+    if (event.data?.type === 'signage-scene-duration' && playlist[sequenceIndex]?.type === 'clock' && !Number(playlist[sequenceIndex].duration)) {
+        scheduleAdvance(Number(event.data.duration));
+    }
 });
 
 document.addEventListener('keydown', event => {
@@ -154,8 +130,6 @@ document.addEventListener('keydown', event => {
 });
 
 async function start() {
-    updateClock();
-    setInterval(updateClock, 1000);
     if (new URLSearchParams(location.search).get('preview') === '1') {
         window.addEventListener('message', event => {
             if (event.origin !== location.origin || event.source !== parent) return;

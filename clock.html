@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>時計</title>
+<style>
+@font-face { font-family: 'GenEiNuGothic'; src: url('./GenEiNuGothic-EB.ttf') format('truetype'); }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+#clockScreen { position: relative; display: flex; width: 100%; height: 100%; overflow: hidden; justify-content: center; align-items: center; background: #0057d8; color: #fff; }
+#clockVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+#clock { position: relative; z-index: 1; width: 100%; height: 100%; color: #fff; font-family: 'GenEiNuGothic', sans-serif; text-shadow: 0 0 10px rgba(0,0,0,.2), 0 0 30px rgba(0,0,0,.2), 0 0 60px rgba(0,0,0,.2); }
+#date { position: absolute; left: 50%; top: calc(50% - 40vh); transform: translateX(-50%); font-size: 10vh; white-space: nowrap; }
+#time { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); display: flex; white-space: nowrap; font-size: 50vh; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div id="clockScreen">
+    <video id="clockVideo" muted autoplay preload="auto" playsinline></video>
+    <div id="clock"><div id="date"></div><div id="time"><span id="hours">00</span><span id="colon">:</span><span id="minutes">00</span></div></div>
+</div>
+<script>
+const clockVideo = document.getElementById('clockVideo');
+const hours = document.getElementById('hours');
+const minutes = document.getElementById('minutes');
+const colon = document.getElementById('colon');
+
+function ordinal(day) {
+    if (day % 10 === 1 && day % 100 !== 11) return 'st';
+    if (day % 10 === 2 && day % 100 !== 12) return 'nd';
+    if (day % 10 === 3 && day % 100 !== 13) return 'rd';
+    return 'th';
+}
+
+function updateClock() {
+    const now = new Date();
+    hours.textContent = String(now.getHours()).padStart(2, '0');
+    minutes.textContent = String(now.getMinutes()).padStart(2, '0');
+    colon.style.opacity = now.getSeconds() % 2 === 0 ? '1' : '0';
+    const weekday = now.toLocaleString('en-US', { weekday: 'long' });
+    const month = now.toLocaleString('en-US', { month: 'long' });
+    const day = now.getDate();
+    document.getElementById('date').textContent = `${weekday}, ${month} ${day}${ordinal(day)}`;
+}
+
+clockVideo.src = './260929%E3%81%82%E3%81%8D.mp4';
+clockVideo.addEventListener('loadedmetadata', () => {
+    if (parent !== window) parent.postMessage({ type: 'signage-scene-duration', duration: clockVideo.duration }, location.origin);
+});
+clockVideo.play().catch(() => {});
+setInterval(updateClock, 1000);
+updateClock();
+
+document.addEventListener('click', () => {
+    if (parent !== window) parent.postMessage({ type: 'signage-scene-next' }, location.origin);
+});
+document.addEventListener('keydown', event => {
+    if (event.code === 'Space') {
+        event.preventDefault();
+        if (parent !== window) parent.postMessage({ type: 'signage-scene-next' }, location.origin);
+    }
+});
+</script>
+</body>
+</html>

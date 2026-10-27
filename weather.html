@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>千葉市の天気予報</title>
+<style>
+@font-face { font-family: 'GenEiNuGothic'; src: url('./GenEiNuGothic-EB.ttf') format('truetype'); }
+:root { color-scheme: light; font-family: 'GenEiNuGothic', sans-serif; background: #078fe5; color: #161616; }
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { position: relative; background: #078fe5 url('./時計背景.png') center / 100% 100% no-repeat; }
+.weatherPage { position: absolute; inset: 3.5% 3.1% 2.7%; display: grid; grid-template-rows: 18% minmax(0, 1fr) 5%; }
+.heading { display: flex; align-items: center; gap: .5em; padding-left: 1.1%; color: #fff; font-size: clamp(38px, 7.4vh, 126px); font-weight: 800; line-height: 1; white-space: nowrap; }
+.panel { min-height: 0; display: grid; grid-template-columns: 41% 59%; overflow: hidden; border-radius: clamp(24px, 3.1vw, 70px); background: #fff; }
+.iconSpace { min-width: 0; min-height: 0; display: grid; place-items: center; padding: 2%; }
+.weatherIcon { display: block; width: 100%; height: 100%; object-fit: contain; }
+.dataArea { min-width: 0; display: grid; grid-template-rows: 58% 42%; padding: 5.2% 5.5% 4.5% 0; }
+.temperature { min-width: 0; display: grid; grid-template-columns: minmax(0, .7fr) auto minmax(0, 1.1fr); grid-template-rows: auto minmax(0, 1fr); align-items: center; }
+.temperatureLabel { justify-self: start; font-size: clamp(20px, 4.2vh, 66px); font-weight: 800; }
+.temperatureLabel.high { grid-column: 1; grid-row: 1; color: #b8323c; }
+.temperatureLabel.low { grid-column: 3; grid-row: 1; color: #2860a8; }
+.temperatureValue { min-width: 0; justify-self: start; white-space: nowrap; font-size: clamp(78px, 21vh, 360px); font-weight: 800; line-height: .95; font-variant-numeric: tabular-nums; }
+.temperatureValue.high { grid-column: 1; grid-row: 2; color: #b8323c; }
+.lowValueGroup { grid-column: 3; grid-row: 2; min-width: 0; display: flex; align-items: flex-end; justify-self: start; white-space: nowrap; }
+.temperatureValue.low { color: #2860a8; }
+.slash { grid-column: 2; grid-row: 1 / 3; align-self: center; transform: translateY(clamp(0px, 3.2vh, 38px)); color: #171717; font-size: clamp(88px, 20vh, 320px); font-weight: 400; line-height: .8; }
+.unit { align-self: flex-end; margin: 0 0 .04em .08em; font-size: clamp(28px, 8vh, 128px); font-weight: 400; line-height: .9; }
+.rain { min-width: 0; display: grid; grid-template-columns: 25% 75%; align-items: center; padding: 0 0 0 2%; }
+.rainLabel { display: grid; justify-items: start; font-size: clamp(36px, 8.5vh, 132px); font-weight: 800; line-height: 1.1; }
+.rainValue { display: flex; align-items: center; justify-content: flex-start; white-space: nowrap; font-size: clamp(82px, 22vh, 370px); font-weight: 800; line-height: .95; font-variant-numeric: tabular-nums; }
+.rainValue small { margin-left: .04em; font-size: .68em; }
+.footer { display: flex; justify-content: flex-end; align-items: end; padding-right: 1.1%; color: #fff; font-size: clamp(14px, 2.2vh, 36px); font-weight: 700; white-space: nowrap; }
+#error { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2; padding: 12px 20px; background: #fff; color: #8d342b; font-size: clamp(16px, 2vh, 28px); }
+@media (max-aspect-ratio: 1/1) {
+    .weatherPage { inset: 2% 3% 2%; grid-template-rows: 14% minmax(0, 1fr) 6%; }
+    .heading { font-size: clamp(28px, 5vh, 54px); }
+    .panel { grid-template-columns: 32% 68%; border-radius: 24px; }
+    .dataArea { grid-template-rows: 55% 45%; padding: 8% 5% 5% 0; }
+    .temperatureLabel { font-size: clamp(16px, 2.7vh, 30px); }
+    .temperatureValue { font-size: clamp(48px, 11vh, 110px); }
+    .slash { transform: translateY(clamp(0px, 2.4vh, 24px)); font-size: clamp(56px, 11vh, 110px); }
+    .unit { font-size: clamp(20px, 5vh, 52px); }
+    .rain { grid-template-columns: 30% 70%; }
+    .rainLabel { font-size: clamp(20px, 3.4vh, 38px); }
+    .rainValue { font-size: clamp(56px, 13vh, 130px); }
+    .footer { font-size: clamp(10px, 1.6vh, 16px); }
+}
+</style>
+</head>
+<body>
+<main class="weatherPage" aria-live="polite">
+    <header class="heading">THE WEATHER of <span id="forecastDate">--th</span></header>
+    <section class="panel" aria-label="千葉市の天気予報">
+        <div class="iconSpace" id="weatherIconSpace" aria-label="天気アイコン"><img class="weatherIcon" id="weatherIcon" alt=""></div>
+        <div class="dataArea">
+            <section class="temperature" aria-label="最高気温と最低気温">
+                <span class="temperatureLabel high">HIGH</span>
+                <span class="temperatureLabel low">LOW</span>
+                <span class="temperatureValue high" id="highTemp">--</span>
+                <span class="slash">/</span>
+                <span class="lowValueGroup"><span class="temperatureValue low" id="lowTemp">--</span><span class="unit">℃</span></span>
+            </section>
+            <section class="rain" aria-label="降水確率">
+                <div class="rainLabel"><span>降水</span><span>確率</span></div>
+                <div class="rainValue"><span id="rainChance">--</span><small>%</small></div>
+            </section>
+        </div>
+    </section>
+    <footer class="footer">気象庁発表・千葉県北西部&nbsp;&nbsp; <span id="updatedAt">--:--</span> 更新</footer>
+    <div id="error" role="status" hidden></div>
+</main>
+<script>
+const JMA_FORECAST_URL = 'https://www.jma.go.jp/bosai/forecast/data/forecast/120000.json';
+const JMA_WEATHER_CODES_URL = './weather-codes.json';
+const JST = 'Asia/Tokyo';
+
+function jstDateParts(date = new Date()) {
+    return Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+        timeZone: JST,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        hourCycle: 'h23'
+    }).formatToParts(date).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+}
+
+function targetForecastDate(now = new Date()) {
+    const parts = jstDateParts(now);
+    const target = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) + (Number(parts.hour) >= 17 ? 1 : 0)));
+    return target.toISOString().slice(0, 10);
+}
+
+function dateIndex(timeDefines, targetDate) {
+    const exact = timeDefines.findIndex(value => value.slice(0, 10) === targetDate);
+    if (exact >= 0) return exact;
+    return timeDefines.findIndex(value => value.slice(0, 10) > targetDate);
+}
+
+function areaFor(series, code) {
+    return series?.areas?.find(area => area.area?.code === code);
+}
+
+function ordinal(day) {
+    if (day % 10 === 1 && day % 100 !== 11) return 'st';
+    if (day % 10 === 2 && day % 100 !== 12) return 'nd';
+    if (day % 10 === 3 && day % 100 !== 13) return 'rd';
+    return 'th';
+}
+
+function setText(id, value) {
+    document.getElementById(id).textContent = value;
+}
+
+function displayForecast(payload, codeCatalog) {
+    const forecast = Array.isArray(payload) ? payload[0] : null;
+    if (!forecast?.timeSeries) throw new Error('気象庁の予報データ形式を確認できません');
+    const targetDate = targetForecastDate();
+    const targetJst = new Date(`${targetDate}T00:00:00+09:00`);
+    const weatherSeries = forecast.timeSeries.find(series => areaFor(series, '120010')?.weatherCodes);
+    const weatherArea = areaFor(weatherSeries, '120010');
+    const weatherIndex = dateIndex(weatherSeries.timeDefines, targetDate);
+    if (weatherIndex < 0 || !weatherArea.weatherCodes[weatherIndex]) throw new Error('対象日の天気予報がありません');
+
+    const tempSeries = forecast.timeSeries.find(series => areaFor(series, '45212')?.temps);
+    const tempArea = areaFor(tempSeries, '45212');
+    const tempIndices = tempSeries.timeDefines.map((value, index) => value.slice(0, 10) === targetDate ? index : -1).filter(index => index >= 0);
+    const temperatures = tempIndices
+        .map(index => tempArea.temps[index])
+        .filter(value => value != null && String(value).trim() !== '')
+        .map(Number)
+        .filter(Number.isFinite);
+    if (temperatures.length < 2) throw new Error('対象日の千葉市の気温を取得できません');
+
+    const popSeries = forecast.timeSeries.find(series => areaFor(series, '120010')?.pops);
+    const popArea = areaFor(popSeries, '120010');
+    const pops = popSeries.timeDefines
+        .map((value, index) => value.slice(0, 10) === targetDate ? popArea.pops[index] : null)
+        .filter(value => value != null && String(value).trim() !== '')
+        .map(Number)
+        .filter(Number.isFinite);
+    const precipitation = pops.length ? Math.max(...pops) : null;
+    const actualWeatherCode = weatherArea.weatherCodes[weatherIndex];
+    const requestedPreviewCode = new URLSearchParams(location.search).get('iconPreview');
+    const previewEntry = codeCatalog.codes.find(entry => entry.code === requestedPreviewCode);
+    const displayWeatherCode = previewEntry?.code || actualWeatherCode;
+    const iconEntry = codeCatalog.codes.find(entry => entry.code === displayWeatherCode);
+    const weatherDescription = previewEntry?.label || weatherArea.weathers?.[weatherIndex] || '天気予報';
+    if (!iconEntry) throw new Error(`天気コード ${displayWeatherCode} のアイコン設定がありません`);
+    const targetDay = Number(new Intl.DateTimeFormat('en-CA', { timeZone: JST, day: 'numeric' }).format(targetJst));
+
+    setText('forecastDate', `${targetDay}${ordinal(targetDay)}`);
+    setText('highTemp', String(Math.max(...temperatures)));
+    setText('lowTemp', String(Math.min(...temperatures)));
+    setText('rainChance', precipitation == null ? '--' : String(precipitation));
+    const updateTime = new Intl.DateTimeFormat('ja-JP', { timeZone: JST, hour: '2-digit', minute: '2-digit' }).format(new Date());
+    setText('updatedAt', previewEntry ? `アイコン確認 ${displayWeatherCode} · ${updateTime}` : updateTime);
+    const icon = document.getElementById('weatherIcon');
+    icon.src = `https://www.jma.go.jp/bosai/forecast/img/${encodeURIComponent(iconEntry.icon)}.svg`;
+    icon.alt = weatherDescription.replace(/\s+/g, ' ').trim();
+    document.getElementById('error').hidden = true;
+}
+
+async function loadForecast() {
+    try {
+        const [forecastResponse, codeResponse] = await Promise.all([
+            fetch(JMA_FORECAST_URL, { cache: 'no-store' }),
+            fetch(JMA_WEATHER_CODES_URL, { cache: 'no-store' })
+        ]);
+        if (!forecastResponse.ok) throw new Error(`気象庁API HTTP ${forecastResponse.status}`);
+        if (!codeResponse.ok) throw new Error(`天気コード一覧 HTTP ${codeResponse.status}`);
+        const [forecast, codeCatalog] = await Promise.all([forecastResponse.json(), codeResponse.json()]);
+        displayForecast(forecast, codeCatalog);
+    } catch (error) {
+        console.error(error);
+        const errorElement = document.getElementById('error');
+        errorElement.textContent = '気象庁の予報を取得できません';
+        errorElement.hidden = false;
+    }
+}
+
+loadForecast();
+setInterval(loadForecast, 10 * 60 * 1000);
+
+document.addEventListener('click', () => {
+    if (parent !== window) parent.postMessage({ type: 'signage-scene-next' }, location.origin);
+});
+document.addEventListener('keydown', event => {
+    if (event.code === 'Space') {
+        event.preventDefault();
+        if (parent !== window) parent.postMessage({ type: 'signage-scene-next' }, location.origin);
+    }
+});
+</script>
+</body>
+</html>

@@ -22,7 +22,20 @@ button { font: inherit; cursor: pointer; }
 .previewPanelHeader { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; color: #fff; }
 .previewPanelHeader h2 { margin: 0; font-size: 18px; }
 .previewPanelHeader button { padding: 7px 10px; border: 1px solid #aab4ae; background: transparent; color: #fff; }
-#previewFrame { display: block; width: 100%; height: min(60vh, 620px); min-height: 280px; border: 0; background: #000; }
+#previewFrame { display: block; width: min(100%, 1102px, 106.6667vh); height: auto; aspect-ratio: 16 / 9; margin: 0 auto; border: 0; background: #000; }
+.weatherTestPanel { margin: 0 0 18px; padding: 12px; background: #fff; border: 1px solid #c5cec8; }
+.weatherTestPanel[hidden] { display: none; }
+.weatherTestHeader { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.weatherTestHeader h2 { margin: 0; font-size: 18px; }
+.weatherTestHeader button { padding: 7px 10px; border: 1px solid #aab4ae; background: #fff; color: #18231f; }
+.weatherTestNote { margin: 0 0 10px; color: #53615a; }
+.weatherTestBody { display: grid; grid-template-columns: minmax(240px, .7fr) minmax(0, 1.3fr); gap: 12px; }
+.weatherCodeGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(94px, 1fr)); gap: 6px; max-height: 520px; overflow: auto; align-content: start; }
+.weatherCodeButton { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 6px; min-height: 48px; padding: 4px 6px; border: 1px solid #c5cec8; background: #fff; color: #18231f; text-align: left; font: inherit; cursor: pointer; }
+.weatherCodeButton:hover, .weatherCodeButton[aria-pressed="true"] { border-color: #176b52; background: #edf5f1; }
+.weatherCodeButton img { width: 40px; height: 36px; object-fit: contain; }
+.weatherCodeButton span { font-size: 12px; font-variant-numeric: tabular-nums; }
+#weatherTestFrame { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border: 0; background: #078fe5; }
 .actionButton.secondary { background: #344c42; }
 .actionButton.secondary:hover { background: #23372d; }
 #fileInput { display: none; }
@@ -88,6 +101,7 @@ button { font: inherit; cursor: pointer; }
             <button class="actionButton secondary" id="openFileButton" type="button">設定JSONを開く</button>
             <button class="actionButton" id="saveFileButton" type="button">JSONに保存</button>
             <button class="actionButton" id="previewButton" type="button" aria-expanded="false" aria-controls="previewPanel">サイネージをプレビュー</button>
+            <button class="actionButton secondary" id="weatherTestButton" type="button" aria-expanded="false" aria-controls="weatherTestPanel">天気アイコンを試す</button>
             <button class="actionButton secondary" id="refreshMediaButton" type="button">素材一覧を更新</button>
             <input id="fileInput" type="file" accept=".json,application/json">
         </div>
@@ -100,6 +114,17 @@ button { font: inherit; cursor: pointer; }
         </div>
         <iframe id="previewFrame" title="現在のプレイリストのプレビュー" allow="autoplay"></iframe>
     </section>
+    <section class="weatherTestPanel" id="weatherTestPanel" hidden aria-label="天気アイコンの一覧プレビュー">
+        <div class="weatherTestHeader">
+            <h2>気象庁 天気アイコン一覧</h2>
+            <button id="closeWeatherTestButton" type="button">閉じる</button>
+        </div>
+        <p class="weatherTestNote">コードを選ぶと、左側のアイコンを差し替えた天気シーンを確認できます。気温・降水確率は現在の予報値です。</p>
+        <div class="weatherTestBody">
+            <div class="weatherCodeGrid" id="weatherCodeGrid"></div>
+            <iframe id="weatherTestFrame" title="選択した天気コードのプレビュー"></iframe>
+        </div>
+    </section>
     <p id="status" role="status"></p>
     <section id="playlist" aria-label="再生順"></section>
     <button class="addButton" id="addItem" type="button">＋ 項目を追加</button>
@@ -107,8 +132,9 @@ button { font: inherit; cursor: pointer; }
 <script>
 const defaultPlaylist = [
     { type: 'video', src: 'movie.mp4', duration: null },
-    { type: 'clock', src: '260929あき.mp4', duration: null },
-    { type: 'image', src: 'image_ecc1.png', duration: 15 }
+    { type: 'clock', src: 'clock.html', duration: null },
+    { type: 'image', src: 'image_ecc1.png', duration: 15 },
+    { type: 'weather', src: 'weather.html', duration: 15 }
 ];
 const playlistElement = document.getElementById('playlist');
 const statusElement = document.getElementById('status');
@@ -116,6 +142,11 @@ const fileInput = document.getElementById('fileInput');
 const previewPanel = document.getElementById('previewPanel');
 const previewFrame = document.getElementById('previewFrame');
 const previewButton = document.getElementById('previewButton');
+const weatherTestPanel = document.getElementById('weatherTestPanel');
+const weatherTestButton = document.getElementById('weatherTestButton');
+const weatherCodeGrid = document.getElementById('weatherCodeGrid');
+const weatherTestFrame = document.getElementById('weatherTestFrame');
+let jmaWeatherIcons = [];
 let playlist = defaultPlaylist.map(item => ({ ...item }));
 let availableMedia = [];
 let settingsHandle = null;
@@ -151,6 +182,50 @@ function togglePreview(forceOpen = null) {
         previewFrame.src = './index.html?preview=1';
     } else {
         sendPreviewPlaylist();
+    }
+}
+
+async function renderWeatherIconTests() {
+    const response = await fetch('./weather-codes.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`天気コード一覧 HTTP ${response.status}`);
+    const catalog = await response.json();
+    if (!Array.isArray(catalog.codes)) throw new Error('天気コード一覧の形式が正しくありません');
+    jmaWeatherIcons = catalog.codes;
+    weatherCodeGrid.replaceChildren();
+    for (const entry of jmaWeatherIcons) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'weatherCodeButton';
+        button.setAttribute('aria-pressed', 'false');
+        button.title = `${entry.code}: ${entry.label} (${entry.icon}.svg)`;
+        const icon = document.createElement('img');
+        icon.src = `https://www.jma.go.jp/bosai/forecast/img/${entry.icon}.svg`;
+        icon.alt = '';
+        const caption = document.createElement('span');
+        caption.textContent = `${entry.code} ${entry.label}`;
+        button.append(icon, caption);
+        button.addEventListener('click', () => {
+            for (const other of weatherCodeGrid.querySelectorAll('.weatherCodeButton')) other.setAttribute('aria-pressed', 'false');
+            button.setAttribute('aria-pressed', 'true');
+            weatherTestFrame.src = `./weather.html?iconPreview=${entry.code}`;
+        });
+        weatherCodeGrid.append(button);
+    }
+    const defaultButton = [...weatherCodeGrid.querySelectorAll('.weatherCodeButton')]
+        .find(button => button.title.startsWith('100:'));
+    defaultButton?.click();
+}
+
+async function toggleWeatherIconTests(forceOpen = null) {
+    const shouldOpen = forceOpen ?? weatherTestPanel.hidden;
+    weatherTestPanel.hidden = !shouldOpen;
+    weatherTestButton.setAttribute('aria-expanded', String(shouldOpen));
+    if (shouldOpen && !weatherCodeGrid.childElementCount) {
+        try {
+            await renderWeatherIconTests();
+        } catch (error) {
+            setStatus(`天気コード一覧を読み込めませんでした: ${error.message}`, true);
+        }
     }
 }
 
@@ -231,6 +306,14 @@ async function refreshMediaFiles(showStatus = true, rerender = true) {
 
 function updatePreview(item, preview, filename) {
     preview.replaceChildren();
+    if (item.type === 'clock' || item.type === 'clock1' || item.type === 'clock2') {
+        preview.textContent = '時計';
+        return;
+    }
+    if (item.type === 'weather') {
+        preview.textContent = '天気予報';
+        return;
+    }
     const kind = kindFor(item);
     const safeSource = safeFilename(filename);
     if (!safeSource) {
@@ -298,7 +381,7 @@ function renderFileChoices(item, list, filenameInput, preview, picker) {
 function validateSettings(data) {
     if (!data || !Array.isArray(data.playlist) || data.playlist.length === 0) return false;
     return data.playlist.every(item => {
-        const typeOk = ['image', 'video', 'clock', 'clock1', 'clock2'].includes(item?.type);
+        const typeOk = ['image', 'video', 'clock', 'clock1', 'clock2', 'weather'].includes(item?.type);
         const sourceOk = typeof item?.src === 'string' && safeFilename(item.src) === item.src;
         const durationOk = item?.duration == null || (Number.isFinite(Number(item.duration)) && Number(item.duration) > 0);
         return typeOk && sourceOk && durationOk;
@@ -308,8 +391,14 @@ function validateSettings(data) {
 function normalizePlaylist(items) {
     return items.map(item => ({
         type: item.type,
-        src: safeFilename(item.src),
-        duration: item.duration == null ? null : Number(item.duration)
+        src: item.type === 'weather'
+            ? 'weather.html'
+            : (['clock', 'clock1', 'clock2'].includes(item.type) && /\.(mp4|m4v|mov|webm|ogv|ogg)$/i.test(item.src)
+                ? 'clock.html'
+                : safeFilename(item.src)),
+        duration: item.type === 'weather'
+            ? (item.duration == null ? 15 : Number(item.duration))
+            : (item.duration == null ? null : Number(item.duration))
     }));
 }
 
@@ -348,7 +437,7 @@ function render() {
 
         const type = document.createElement('select');
         type.setAttribute('aria-label', '表示の種類');
-        [['image', '画像'], ['video', '映像'], ['clock', '時計']].forEach(([value, label]) => {
+        [['image', '画像'], ['video', '映像'], ['clock', '時計'], ['weather', '天気']].forEach(([value, label]) => {
             const option = document.createElement('option');
             option.value = value;
             option.textContent = label;
@@ -361,8 +450,11 @@ function render() {
                 item.src = 'image_ecc1.png';
                 item.duration = 15;
             } else if (type.value === 'clock') {
-                item.src = '260929あき.mp4';
+                item.src = 'clock.html';
                 item.duration = null;
+            } else if (type.value === 'weather') {
+                item.src = 'weather.html';
+                item.duration = 15;
             } else {
                 item.src = 'movie.mp4';
                 item.duration = null;
@@ -382,43 +474,50 @@ function render() {
         filename.type = 'text';
         filename.value = item.src;
         filename.setAttribute('aria-label', '同じフォルダー内のファイル名');
+        const isScenePage = ['clock', 'clock1', 'clock2', 'weather'].includes(item.type);
         filename.placeholder = item.type === 'image' ? '例: image_ecc1.png' : '例: movie.mp4';
-        filename.addEventListener('input', () => {
-            const source = safeFilename(filename.value);
-            if (source) item.src = source;
-            updatePreview(item, preview, filename.value);
-            setDirty();
-        });
-        filename.addEventListener('change', () => {
-            const source = safeFilename(filename.value);
-            if (!source) {
-                filename.value = item.src;
-                setStatus('ファイル名だけを入力してください。フォルダー名やパスは不要です。', true);
-                return;
-            }
-            item.src = source;
-            filename.value = source;
-            setDirty();
-        });
+        filename.readOnly = isScenePage;
+        if (!isScenePage) {
+            filename.addEventListener('input', () => {
+                const source = safeFilename(filename.value);
+                if (source) item.src = source;
+                updatePreview(item, preview, filename.value);
+                setDirty();
+            });
+            filename.addEventListener('change', () => {
+                const source = safeFilename(filename.value);
+                if (!source) {
+                    filename.value = item.src;
+                    setStatus('ファイル名だけを入力してください。フォルダー名やパスは不要です。', true);
+                    return;
+                }
+                item.src = source;
+                filename.value = source;
+                setDirty();
+            });
+        }
         const hint = document.createElement('small');
-        hint.textContent = 'index.html と同じ階層';
-        const filePicker = document.createElement('details');
-        filePicker.className = 'filePicker';
-        const pickerToggle = document.createElement('summary');
-        pickerToggle.textContent = `${item.type === 'image' ? '画像' : '映像'}を選ぶ (${mediaCandidatesFor(item).length})`;
-        const fileChoices = document.createElement('div');
-        fileChoices.className = 'fileChoices';
-        filePicker.addEventListener('toggle', async () => {
-            if (!filePicker.open) return;
-            if (['localhost', '127.0.0.1'].includes(location.hostname)) {
-                const result = await refreshMediaFiles(false, false);
-                if (!result.ok) setStatus(`素材一覧を更新できませんでした: ${result.error.message}`, true);
-            }
+        hint.textContent = isScenePage ? '独立シーンHTML' : 'index.html と同じ階層';
+        mediaInput.append(filename, hint);
+        if (!isScenePage) {
+            const filePicker = document.createElement('details');
+            filePicker.className = 'filePicker';
+            const pickerToggle = document.createElement('summary');
             pickerToggle.textContent = `${item.type === 'image' ? '画像' : '映像'}を選ぶ (${mediaCandidatesFor(item).length})`;
-            renderFileChoices(item, fileChoices, filename, preview, filePicker);
-        });
-        filePicker.append(pickerToggle, fileChoices);
-        mediaInput.append(filename, hint, filePicker);
+            const fileChoices = document.createElement('div');
+            fileChoices.className = 'fileChoices';
+            filePicker.addEventListener('toggle', async () => {
+                if (!filePicker.open) return;
+                if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+                    const result = await refreshMediaFiles(false, false);
+                    if (!result.ok) setStatus(`素材一覧を更新できませんでした: ${result.error.message}`, true);
+                }
+                pickerToggle.textContent = `${item.type === 'image' ? '画像' : '映像'}を選ぶ (${mediaCandidatesFor(item).length})`;
+                renderFileChoices(item, fileChoices, filename, preview, filePicker);
+            });
+            filePicker.append(pickerToggle, fileChoices);
+            mediaInput.append(filePicker);
+        }
         mediaField.append(preview, mediaInput);
 
         const durationField = document.createElement('label');
@@ -428,10 +527,10 @@ function render() {
         duration.min = '1';
         duration.step = '1';
         duration.value = item.duration == null ? '' : String(item.duration);
-        duration.placeholder = item.type === 'image' ? '15' : '動画の長さ';
+        duration.placeholder = item.type === 'image' || item.type === 'weather' ? '15' : '動画の長さ';
         duration.setAttribute('aria-label', '表示秒数');
         duration.addEventListener('change', () => {
-            item.duration = duration.value ? Math.max(1, Number(duration.value)) : (item.type === 'image' ? 15 : null);
+            item.duration = duration.value ? Math.max(1, Number(duration.value)) : (item.type === 'image' || item.type === 'weather' ? 15 : null);
             duration.value = item.duration == null ? '' : String(item.duration);
             setDirty();
         });
@@ -575,6 +674,8 @@ document.getElementById('openFileButton').addEventListener('click', openSettings
 document.getElementById('saveFileButton').addEventListener('click', saveSettings);
 previewButton.addEventListener('click', () => togglePreview());
 document.getElementById('closePreviewButton').addEventListener('click', () => togglePreview(false));
+weatherTestButton.addEventListener('click', () => toggleWeatherIconTests());
+document.getElementById('closeWeatherTestButton').addEventListener('click', () => toggleWeatherIconTests(false));
 document.getElementById('refreshMediaButton').addEventListener('click', () => refreshMediaFiles(true));
 window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== previewFrame.contentWindow) return;
