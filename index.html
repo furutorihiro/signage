@@ -9,20 +9,23 @@
     font-family: 'GenEiNuGothic';
     src: url('./GenEiNuGothic-EB.ttf') format('truetype');
 }
-html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+#signageFrame { position: absolute; left: 50%; top: 50%; width: min(100vw, 177.7778vh); aspect-ratio: 16 / 9; transform: translate(-50%, -50%); overflow: hidden; background: #000; }
 #videoScreen, #imageScreen, #sceneScreen { width: 100%; height: 100%; }
 video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 #imageScreen { display: none; justify-content: center; align-items: center; background: #000; }
 #image { width: 100%; height: 100%; object-fit: contain; }
-#sceneScreen { display: none; position: fixed; inset: 0; background: #000; }
+#sceneScreen { display: none; position: absolute; inset: 0; background: #000; }
 #sceneFrame { display: block; width: 100%; height: 100%; border: 0; }
 #loadError { display: none; position: fixed; inset: auto 16px 16px; z-index: 10; padding: 12px 16px; background: rgba(0,0,0,.8); color: white; font: 16px sans-serif; }
 </style>
 </head>
 <body>
-<div id="videoScreen"><video id="video" autoplay muted playsinline></video></div>
-<div id="imageScreen"><img id="image" alt=""></div>
-<div id="sceneScreen"><iframe id="sceneFrame" title="サイネージシーン" allow="autoplay"></iframe></div>
+<div id="signageFrame">
+    <div id="videoScreen"><video id="video" autoplay muted playsinline></video></div>
+    <div id="imageScreen"><img id="image" alt=""></div>
+    <div id="sceneScreen"><iframe id="sceneFrame" title="サイネージシーン" allow="autoplay"></iframe></div>
+</div>
 <div id="loadError" role="status"></div>
 <script>
 const video = document.getElementById('video');
