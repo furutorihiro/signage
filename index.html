@@ -53,9 +53,14 @@ let playlist = [];
 let sequenceIndex = 0;
 let advanceTimer = null;
 let advancing = false;
+let weatherBackground = '時計背景.png';
 
 function mediaUrl(filename) {
     return `./${encodeURIComponent(filename)}`;
+}
+
+function weatherSceneUrl(filename) {
+    return `${mediaUrl(filename)}?background=${encodeURIComponent(weatherBackground)}`;
 }
 
 function scheduleAdvance(seconds) {
@@ -83,7 +88,7 @@ function showCurrent() {
     if (item.type === 'clock' || item.type === 'weather') {
         sceneScreen.style.display = 'block';
         const scenePath = item.src || (item.type === 'clock' ? 'clock.html' : 'weather.html');
-        sceneFrame.src = mediaUrl(scenePath);
+        sceneFrame.src = item.type === 'weather' ? weatherSceneUrl(scenePath) : mediaUrl(scenePath);
         if (Number(item.duration) > 0) scheduleAdvance(Number(item.duration));
         else if (item.type === 'weather') scheduleAdvance(15);
         return;
@@ -135,6 +140,7 @@ async function start() {
             if (event.origin !== location.origin || event.source !== parent) return;
             if (event.data?.type !== 'signage-preview-playlist' || !Array.isArray(event.data.playlist) || !event.data.playlist.length) return;
             playlist = event.data.playlist;
+            weatherBackground = event.data.weatherBackground === '260929あき.mp4' ? '260929あき.mp4' : '時計背景.png';
             sequenceIndex = 0;
             loadError.style.display = 'none';
             showCurrent();
@@ -148,6 +154,7 @@ async function start() {
         const data = await response.json();
         if (!Array.isArray(data.playlist) || !data.playlist.length) throw new Error('設定JSONにプレイリストがありません');
         playlist = data.playlist;
+        weatherBackground = data.weatherBackground === '260929あき.mp4' ? '260929あき.mp4' : '時計背景.png';
     } catch (error) {
         console.error(error);
         playlist = fallbackPlaylist;

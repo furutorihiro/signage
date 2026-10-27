@@ -40,6 +40,22 @@ button { font: inherit; cursor: pointer; }
 .actionButton.secondary:hover { background: #23372d; }
 #fileInput { display: none; }
 .note { margin: 0 0 16px; padding: 12px 14px; border-left: 4px solid #c88626; background: #fff; color: #39453e; line-height: 1.6; }
+.weatherCodeStatus { display: flex; align-items: baseline; gap: 10px; margin: 0 0 16px; padding: 12px 14px; border-left: 4px solid #176b52; background: #fff; color: #39453e; }
+.weatherCodeStatus strong { color: #176b52; font-size: 22px; font-variant-numeric: tabular-nums; }
+.weatherCodeStatus small { color: #53615a; }
+.weatherBackgroundSetting { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; padding: 12px 14px; background: #fff; border: 1px solid #c5cec8; }
+.weatherBackgroundSetting label { font-weight: bold; }
+.weatherBackgroundSetting select { padding: 7px 10px; border: 1px solid #aab4ae; background: #fff; color: #18231f; font: inherit; }
+.weeklyForecast { margin: 0 0 18px; padding: 14px; background: #fff; border: 1px solid #c5cec8; }
+.weeklyForecast h2 { margin: 0 0 4px; font-size: 18px; }
+.weeklyForecastNote { margin: 0 0 12px; color: #53615a; font-size: 13px; }
+.weeklyForecastGrid { display: grid; grid-template-columns: repeat(7, minmax(110px, 1fr)); gap: 8px; overflow-x: auto; }
+.weeklyForecastDay { min-width: 110px; padding: 9px; border: 1px solid #c5cec8; background: #f8faf8; text-align: center; }
+.weeklyForecastDay time { display: block; font-size: 13px; color: #53615a; }
+.weeklyForecastDay img { display: block; width: 54px; height: 48px; margin: 4px auto; object-fit: contain; }
+.weeklyForecastWeather { display: block; min-height: 2.8em; font-size: 13px; line-height: 1.4; }
+.weeklyForecastCode { display: block; color: #176b52; font-size: 16px; font-weight: bold; font-variant-numeric: tabular-nums; }
+.weeklyForecastMeta { display: block; margin-top: 4px; color: #53615a; font-size: 12px; }
 #status { min-height: 24px; margin: 0 0 12px; color: #53615a; }
 #status[data-error="true"] { color: #9b3029; }
 #playlist { display: grid; gap: 9px; }
@@ -107,6 +123,13 @@ button { font: inherit; cursor: pointer; }
         </div>
     </header>
     <p class="note">素材ファイルは index.html と同じフォルダーに置き、ファイル名だけを指定してください。保存した signage-playlist.json をGitHub Desktopでcommit/pushすると、GitHub Pagesのサイネージに反映されます。</p>
+    <p class="weatherBackgroundSetting"><label for="weatherBackground">天気シーンの背景</label><select id="weatherBackground"><option value="時計背景.png">時計背景.png</option><option value="260929あき.mp4">260929あき.mp4</option></select></p>
+    <p class="weatherCodeStatus" aria-live="polite">天気シーンの天気コード: <strong id="currentWeatherCode">取得中…</strong><small id="currentWeatherCodeDetail"></small></p>
+    <section class="weeklyForecast" aria-labelledby="weeklyForecastTitle">
+        <h2 id="weeklyForecastTitle">千葉県の週間天気予報</h2>
+        <p class="weeklyForecastNote">気象庁の週間予報（翌日から7日先）です。天気コードは千葉県予報区のものです。</p>
+        <div class="weeklyForecastGrid" id="weeklyForecastGrid" aria-live="polite">週間予報を取得中…</div>
+    </section>
     <section class="previewPanel" id="previewPanel" hidden aria-label="サイネージプレビュー">
         <div class="previewPanelHeader">
             <h2>サイネージプレビュー</h2>
@@ -130,6 +153,9 @@ button { font: inherit; cursor: pointer; }
     <button class="addButton" id="addItem" type="button">＋ 項目を追加</button>
 </main>
 <script>
+const JMA_FORECAST_URL = 'https://www.jma.go.jp/bosai/forecast/data/forecast/120000.json';
+const JST = 'Asia/Tokyo';
+const WEATHER_DATA_CACHE_KEY = 'signage-weather-data';
 const defaultPlaylist = [
     { type: 'video', src: 'movie.mp4', duration: null },
     { type: 'clock', src: 'clock.html', duration: null },
@@ -146,11 +172,145 @@ const weatherTestPanel = document.getElementById('weatherTestPanel');
 const weatherTestButton = document.getElementById('weatherTestButton');
 const weatherCodeGrid = document.getElementById('weatherCodeGrid');
 const weatherTestFrame = document.getElementById('weatherTestFrame');
+const weatherBackgroundSelect = document.getElementById('weatherBackground');
 let jmaWeatherIcons = [];
 let playlist = defaultPlaylist.map(item => ({ ...item }));
+let weatherBackground = '時計背景.png';
 let availableMedia = [];
 let settingsHandle = null;
 let dirty = false;
+let weatherDataPromise = null;
+
+function jstDateParts(date = new Date()) {
+    return Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+        timeZone: JST,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        hourCycle: 'h23'
+    }).formatToParts(date).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+}
+
+function targetForecastDate(now = new Date()) {
+    const parts = jstDateParts(now);
+    const target = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day) + (Number(parts.hour) >= 17 ? 1 : 0)));
+    return target.toISOString().slice(0, 10);
+}
+
+function dateIndex(timeDefines, targetDate) {
+    const exact = timeDefines.findIndex(value => value.slice(0, 10) === targetDate);
+    return exact >= 0 ? exact : timeDefines.findIndex(value => value.slice(0, 10) > targetDate);
+}
+
+function areaFor(series, code) {
+    return series?.areas?.find(area => area.area?.code === code);
+}
+
+function loadWeatherData() {
+    if (!weatherDataPromise) {
+        try {
+            const cached = JSON.parse(sessionStorage.getItem(WEATHER_DATA_CACHE_KEY));
+            if (Array.isArray(cached?.payload) && Array.isArray(cached?.codeCatalog?.codes)) {
+                weatherDataPromise = Promise.resolve(cached);
+            }
+        } catch (_) {
+            sessionStorage.removeItem(WEATHER_DATA_CACHE_KEY);
+        }
+        if (!weatherDataPromise) {
+            weatherDataPromise = Promise.all([
+                fetch(JMA_FORECAST_URL, { cache: 'no-store' }),
+                fetch('./weather-codes.json', { cache: 'no-store' })
+            ]).then(async ([forecastResponse, codeResponse]) => {
+                if (!forecastResponse.ok) throw new Error(`気象庁API HTTP ${forecastResponse.status}`);
+                if (!codeResponse.ok) throw new Error(`天気コード一覧 HTTP ${codeResponse.status}`);
+                const [payload, codeCatalog] = await Promise.all([forecastResponse.json(), codeResponse.json()]);
+                const weatherData = { payload, codeCatalog };
+                sessionStorage.setItem(WEATHER_DATA_CACHE_KEY, JSON.stringify(weatherData));
+                return weatherData;
+            });
+        }
+    }
+    return weatherDataPromise;
+}
+
+async function loadCurrentWeatherCode() {
+    const codeElement = document.getElementById('currentWeatherCode');
+    const detailElement = document.getElementById('currentWeatherCodeDetail');
+    try {
+        const { payload } = await loadWeatherData();
+        const forecast = Array.isArray(payload) ? payload[0] : null;
+        const weatherSeries = forecast?.timeSeries?.find(series => areaFor(series, '120010')?.weatherCodes);
+        const weatherArea = areaFor(weatherSeries, '120010');
+        const targetDate = targetForecastDate();
+        const weatherIndex = dateIndex(weatherSeries?.timeDefines || [], targetDate);
+        const weatherCode = weatherArea?.weatherCodes?.[weatherIndex];
+        if (weatherIndex < 0 || !weatherCode) throw new Error('対象日の天気予報がありません');
+        const description = weatherArea.weathers?.[weatherIndex]?.replace(/\s+/g, ' ').trim();
+        codeElement.textContent = weatherCode;
+        detailElement.textContent = `${targetDate}（${description || '天気予報'}）`;
+    } catch (error) {
+        console.error(error);
+        codeElement.textContent = '取得できません';
+        detailElement.textContent = '';
+    }
+}
+
+function formatForecastDate(value) {
+    return new Intl.DateTimeFormat('ja-JP', {
+        timeZone: JST,
+        month: 'numeric',
+        day: 'numeric',
+        weekday: 'short'
+    }).format(new Date(value));
+}
+
+async function loadWeeklyForecast() {
+    const grid = document.getElementById('weeklyForecastGrid');
+    try {
+        const { payload, codeCatalog } = await loadWeatherData();
+        const forecast = Array.isArray(payload) ? payload[1] : null;
+        const weeklySeries = forecast?.timeSeries?.find(series => areaFor(series, '120000')?.weatherCodes);
+        const weeklyArea = areaFor(weeklySeries, '120000');
+        if (!weeklySeries?.timeDefines || !weeklyArea?.weatherCodes) throw new Error('週間天気予報の形式を確認できません');
+        const entries = weeklySeries.timeDefines.map((date, index) => ({
+            date,
+            code: weeklyArea.weatherCodes[index],
+            precipitation: weeklyArea.pops?.[index],
+            reliability: weeklyArea.reliabilities?.[index]
+        })).filter(entry => entry.code).slice(0, 7);
+        if (!entries.length) throw new Error('週間天気予報がありません');
+        const codeByValue = new Map(codeCatalog.codes.map(entry => [entry.code, entry]));
+        grid.replaceChildren(...entries.map(entry => {
+            const codeInfo = codeByValue.get(entry.code);
+            const day = document.createElement('article');
+            day.className = 'weeklyForecastDay';
+            const date = document.createElement('time');
+            date.dateTime = entry.date;
+            date.textContent = formatForecastDate(entry.date);
+            const icon = document.createElement('img');
+            icon.src = `https://www.jma.go.jp/bosai/forecast/img/${encodeURIComponent(codeInfo?.icon || entry.code)}.svg`;
+            icon.alt = codeInfo?.label || `天気コード ${entry.code}`;
+            const weather = document.createElement('span');
+            weather.className = 'weeklyForecastWeather';
+            weather.textContent = codeInfo?.label || '天気情報なし';
+            const code = document.createElement('span');
+            code.className = 'weeklyForecastCode';
+            code.textContent = entry.code;
+            const meta = document.createElement('span');
+            meta.className = 'weeklyForecastMeta';
+            const details = [];
+            if (entry.precipitation) details.push(`降水 ${entry.precipitation}%`);
+            if (entry.reliability) details.push(`信頼度 ${entry.reliability}`);
+            meta.textContent = details.join(' · ') || '—';
+            day.append(date, icon, weather, code, meta);
+            return day;
+        }));
+    } catch (error) {
+        console.error(error);
+        grid.textContent = '週間予報を取得できません';
+    }
+}
 
 function setStatus(message, isError = false) {
     statusElement.textContent = message;
@@ -167,8 +327,15 @@ function sendPreviewPlaylist() {
     if (!previewFrame.contentWindow || previewFrame.dataset.ready !== 'true') return;
     previewFrame.contentWindow.postMessage({
         type: 'signage-preview-playlist',
-        playlist: playlist.map(item => ({ ...item }))
+        playlist: playlist.map(item => ({ ...item })),
+        weatherBackground
     }, location.origin);
+}
+
+function weatherSceneUrl(iconPreview = null) {
+    const params = new URLSearchParams({ background: weatherBackground });
+    if (iconPreview) params.set('iconPreview', iconPreview);
+    return `./weather.html?${params}`;
 }
 
 function togglePreview(forceOpen = null) {
@@ -207,7 +374,7 @@ async function renderWeatherIconTests() {
         button.addEventListener('click', () => {
             for (const other of weatherCodeGrid.querySelectorAll('.weatherCodeButton')) other.setAttribute('aria-pressed', 'false');
             button.setAttribute('aria-pressed', 'true');
-            weatherTestFrame.src = `./weather.html?iconPreview=${entry.code}`;
+            weatherTestFrame.src = weatherSceneUrl(entry.code);
         });
         weatherCodeGrid.append(button);
     }
@@ -380,6 +547,7 @@ function renderFileChoices(item, list, filenameInput, preview, picker) {
 
 function validateSettings(data) {
     if (!data || !Array.isArray(data.playlist) || data.playlist.length === 0) return false;
+    if (data.weatherBackground != null && !['時計背景.png', '260929あき.mp4'].includes(data.weatherBackground)) return false;
     return data.playlist.every(item => {
         const typeOk = ['image', 'video', 'clock', 'clock1', 'clock2', 'weather'].includes(item?.type);
         const sourceOk = typeof item?.src === 'string' && safeFilename(item.src) === item.src;
@@ -571,7 +739,7 @@ function moveItem(from, to) {
 }
 
 function settingsData() {
-    return { version: 1, savedAt: new Date().toISOString(), playlist };
+    return { version: 1, savedAt: new Date().toISOString(), weatherBackground, playlist };
 }
 
 async function writeToHandle(handle) {
@@ -618,6 +786,8 @@ async function loadSettingsFile(file) {
     const data = JSON.parse(await file.text());
     if (!validateSettings(data)) throw new Error('設定JSONの形式が正しくありません。ファイル名は同じ階層の名前だけ指定できます。');
     playlist = normalizePlaylist(data.playlist);
+    weatherBackground = data.weatherBackground || '時計背景.png';
+    weatherBackgroundSelect.value = weatherBackground;
     dirty = false;
     render();
     setStatus(`${file.name} を読み込みました。編集後にJSONへ保存してください。`);
@@ -655,6 +825,8 @@ async function loadPublishedSettings() {
         const data = await response.json();
         if (!validateSettings(data)) throw new Error('形式が正しくありません');
         playlist = normalizePlaylist(data.playlist);
+        weatherBackground = data.weatherBackground || '時計背景.png';
+        weatherBackgroundSelect.value = weatherBackground;
         settingsMessage = location.hostname === '127.0.0.1' || location.hostname === 'localhost'
             ? 'ローカルの signage-playlist.json を読み込みました。保存後、「サイネージをプレビュー」で変更を確認できます。'
             : '公開中の signage-playlist.json を読み込みました。ローカルJSONを開いて編集することもできます。';
@@ -676,6 +848,12 @@ previewButton.addEventListener('click', () => togglePreview());
 document.getElementById('closePreviewButton').addEventListener('click', () => togglePreview(false));
 weatherTestButton.addEventListener('click', () => toggleWeatherIconTests());
 document.getElementById('closeWeatherTestButton').addEventListener('click', () => toggleWeatherIconTests(false));
+weatherBackgroundSelect.addEventListener('change', () => {
+    weatherBackground = weatherBackgroundSelect.value;
+    const selectedCode = weatherCodeGrid.querySelector('.weatherCodeButton[aria-pressed="true"]')?.title?.split(':')[0];
+    if (selectedCode) weatherTestFrame.src = weatherSceneUrl(selectedCode);
+    setDirty();
+});
 document.getElementById('refreshMediaButton').addEventListener('click', () => refreshMediaFiles(true));
 window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== previewFrame.contentWindow) return;
@@ -697,6 +875,8 @@ document.getElementById('addItem').addEventListener('click', () => {
     render();
 });
 loadPublishedSettings();
+loadCurrentWeatherCode();
+loadWeeklyForecast();
 </script>
 </body>
 </html>
