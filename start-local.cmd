@@ -1,19 +1,28 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+set PORT=8000
 
-curl.exe --silent --fail --max-time 1 http://127.0.0.1:8000/admin.html -o nul >nul 2>nul
+:check_port
+curl.exe --silent --fail --max-time 1 --get --data-urlencode "root=%CD%" http://127.0.0.1:%PORT%/__media-root-check -o nul >nul 2>nul
 if not errorlevel 1 goto :open_admin
+
+curl.exe --silent --fail --max-time 1 http://127.0.0.1:%PORT%/admin.html -o nul >nul 2>nul
+if not errorlevel 1 (
+    set /a PORT+=1
+)
+if %PORT% GTR 8010 goto :no_free_port
+if not errorlevel 1 goto :check_port
 
 where py >nul 2>nul
 if not errorlevel 1 (
-    start "Signage Local Server" /D "%~dp0" py -m http.server 8000 --bind 127.0.0.1
+    start "Signage Local Server" /D "%~dp0" py "%~dp0local-server.py" %PORT%
     goto :wait_for_server
 )
 
 where python >nul 2>nul
 if not errorlevel 1 (
-    start "Signage Local Server" /D "%~dp0" python -m http.server 8000 --bind 127.0.0.1
+    start "Signage Local Server" /D "%~dp0" python "%~dp0local-server.py" %PORT%
     goto :wait_for_server
 )
 
@@ -23,16 +32,22 @@ goto :end
 
 :wait_for_server
 for /l %%i in (1,1,15) do (
-    curl.exe --silent --fail --max-time 1 http://127.0.0.1:8000/admin.html -o nul >nul 2>nul
+    curl.exe --silent --fail --max-time 1 --get --data-urlencode "root=%CD%" http://127.0.0.1:%PORT%/__media-root-check -o nul >nul 2>nul
     if not errorlevel 1 goto :open_admin
     timeout /t 1 /nobreak >nul
 )
-echo The local server did not start. Check whether port 8000 is already in use.
+echo The local server did not start on port %PORT%.
+pause
+goto :end
+
+:no_free_port
+echo No free local port was found between 8000 and 8010.
 pause
 goto :end
 
 :open_admin
-start "" "http://127.0.0.1:8000/admin.html"
+echo Admin page: http://127.0.0.1:%PORT%/admin.html
+start "" "http://127.0.0.1:%PORT%/admin.html"
 
 :end
 endlocal

@@ -88,6 +88,7 @@ button { font: inherit; cursor: pointer; }
             <button class="actionButton secondary" id="openFileButton" type="button">設定JSONを開く</button>
             <button class="actionButton" id="saveFileButton" type="button">JSONに保存</button>
             <button class="actionButton" id="previewButton" type="button" aria-expanded="false" aria-controls="previewPanel">サイネージをプレビュー</button>
+            <button class="actionButton secondary" id="refreshMediaButton" type="button">素材一覧を更新</button>
             <input id="fileInput" type="file" accept=".json,application/json">
         </div>
     </header>
@@ -104,10 +105,6 @@ button { font: inherit; cursor: pointer; }
     <button class="addButton" id="addItem" type="button">＋ 項目を追加</button>
 </main>
 <script>
-const knownMedia = [
-    '260929あき.mp4', 'movie.mp4', 'movie_min1.mp4',
-    'image_ecc1.png', 'image_ecc2.png', 'image_ecc3.png', 'image_min.png'
-];
 const defaultPlaylist = [
     { type: 'video', src: 'movie.mp4', duration: null },
     { type: 'clock', src: '260929あき.mp4', duration: null },
@@ -120,6 +117,7 @@ const previewPanel = document.getElementById('previewPanel');
 const previewFrame = document.getElementById('previewFrame');
 const previewButton = document.getElementById('previewButton');
 let playlist = defaultPlaylist.map(item => ({ ...item }));
+let availableMedia = [];
 let settingsHandle = null;
 let dirty = false;
 
@@ -170,6 +168,67 @@ function mediaUrl(filename) {
     return `./${encodeURIComponent(filename)}`;
 }
 
+function isMediaFile(filename) {
+    return /\.(png|jpe?g|gif|webp|avif|bmp|mp4|m4v|mov|webm|ogv|ogg)$/i.test(filename);
+}
+
+async function fetchRepositoryMediaFiles() {
+    const pathParts = location.pathname.split('/').filter(Boolean);
+    let owner = 'furutorihiro';
+    let repository = 'signage';
+    let directory = '';
+    if (location.hostname.endsWith('.github.io')) {
+        owner = location.hostname.split('.')[0];
+        pathParts.pop();
+        repository = pathParts.shift() || repository;
+        directory = pathParts.join('/');
+    }
+    const contentsPath = directory ? `/${directory.split('/').map(encodeURIComponent).join('/')}` : '';
+    const endpoint = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/contents${contentsPath}`;
+    const response = await fetch(endpoint, {
+        cache: 'no-store',
+        headers: { Accept: 'application/vnd.github+json' }
+    });
+    if (!response.ok) throw new Error(`GitHub API HTTP ${response.status}`);
+    const entries = await response.json();
+    if (!Array.isArray(entries)) throw new Error('GitHub APIの応答形式が正しくありません');
+    return entries.filter(entry => entry.type === 'file' && isMediaFile(entry.name)).map(entry => entry.name);
+}
+
+async function discoverMediaFiles() {
+    if (location.protocol === 'file:') throw new Error('Webサーバー経由で管理画面を開いてください');
+    if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+        try {
+            const response = await fetch('./__media-list', { cache: 'no-store' });
+            if (!response.ok) throw new Error(`ローカル素材API HTTP ${response.status}`);
+            const data = await response.json();
+            if (!Array.isArray(data.files)) throw new Error('ローカル素材一覧の形式が正しくありません');
+            return { files: data.files.filter(isMediaFile), source: 'ローカルフォルダー' };
+        } catch (error) {
+            const files = await fetchRepositoryMediaFiles();
+            return { files, source: 'GitHub上のファイル (ローカル一覧APIは利用不可)' };
+        }
+    }
+    return { files: await fetchRepositoryMediaFiles(), source: 'GitHubリポジトリ' };
+}
+
+async function refreshMediaFiles(showStatus = true, rerender = true) {
+    try {
+        const result = await discoverMediaFiles();
+        availableMedia = [...new Set(result.files)].sort((left, right) => left.localeCompare(right, 'ja'));
+        if (rerender) render();
+        if (showStatus) {
+            const images = availableMedia.filter(name => /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(name)).length;
+            const videos = availableMedia.length - images;
+            setStatus(`${result.source}から素材一覧を更新しました (画像 ${images} 件、映像 ${videos} 件)。`);
+        }
+        return { ok: true, source: result.source };
+    } catch (error) {
+        if (showStatus) setStatus(`素材一覧を更新できませんでした: ${error.message}`, true);
+        return { ok: false, error };
+    }
+}
+
 function updatePreview(item, preview, filename) {
     preview.replaceChildren();
     const kind = kindFor(item);
@@ -197,11 +256,15 @@ function updatePreview(item, preview, filename) {
     preview.append(media);
 }
 
-function renderFileChoices(item, list, filenameInput, preview, picker) {
+function mediaCandidatesFor(item) {
     const extensionPattern = kindFor(item) === 'image'
         ? /\.(png|jpe?g|gif|webp|avif|bmp)$/i
         : /\.(mp4|m4v|mov|webm|ogv|ogg)$/i;
-    const candidates = knownMedia.filter(filename => extensionPattern.test(filename));
+    return availableMedia.filter(filename => extensionPattern.test(filename));
+}
+
+function renderFileChoices(item, list, filenameInput, preview, picker) {
+    const candidates = mediaCandidatesFor(item);
     list.replaceChildren();
     if (!candidates.length) {
         const empty = document.createElement('p');
@@ -342,11 +405,17 @@ function render() {
         const filePicker = document.createElement('details');
         filePicker.className = 'filePicker';
         const pickerToggle = document.createElement('summary');
-        pickerToggle.textContent = `${item.type === 'image' ? '画像' : '映像'}を選ぶ (${knownMedia.filter(candidate => item.type === 'image' ? /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(candidate) : /\.(mp4|m4v|mov|webm|ogv|ogg)$/i.test(candidate)).length})`;
+        pickerToggle.textContent = `${item.type === 'image' ? '画像' : '映像'}を選ぶ (${mediaCandidatesFor(item).length})`;
         const fileChoices = document.createElement('div');
         fileChoices.className = 'fileChoices';
-        filePicker.addEventListener('toggle', () => {
-            if (filePicker.open) renderFileChoices(item, fileChoices, filename, preview, filePicker);
+        filePicker.addEventListener('toggle', async () => {
+            if (!filePicker.open) return;
+            if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+                const result = await refreshMediaFiles(false, false);
+                if (!result.ok) setStatus(`素材一覧を更新できませんでした: ${result.error.message}`, true);
+            }
+            pickerToggle.textContent = `${item.type === 'image' ? '画像' : '映像'}を選ぶ (${mediaCandidatesFor(item).length})`;
+            renderFileChoices(item, fileChoices, filename, preview, filePicker);
         });
         filePicker.append(pickerToggle, fileChoices);
         mediaInput.append(filename, hint, filePicker);
@@ -479,25 +548,34 @@ async function loadPublishedSettings() {
         render();
         return;
     }
+    let settingsMessage;
+    let settingsError = false;
     try {
         const response = await fetch('./signage-playlist.json', { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (!validateSettings(data)) throw new Error('形式が正しくありません');
         playlist = normalizePlaylist(data.playlist);
-        setStatus(location.hostname === '127.0.0.1' || location.hostname === 'localhost'
+        settingsMessage = location.hostname === '127.0.0.1' || location.hostname === 'localhost'
             ? 'ローカルの signage-playlist.json を読み込みました。保存後、「サイネージをプレビュー」で変更を確認できます。'
-            : '公開中の signage-playlist.json を読み込みました。ローカルJSONを開いて編集することもできます。');
+            : '公開中の signage-playlist.json を読み込みました。ローカルJSONを開いて編集することもできます。';
     } catch (error) {
-        setStatus(`公開中のJSONを読み込めませんでした (${error.message})。設定JSONを開くか、新規項目から作成してください。`, true);
+        settingsMessage = `設定JSONを読み込めませんでした (${error.message})。設定JSONを開くか、新規項目から作成してください。`;
+        settingsError = true;
     }
-    render();
+    const mediaResult = await refreshMediaFiles(false);
+    if (!mediaResult.ok) {
+        setStatus(`${settingsMessage} 素材一覧も更新できませんでした (${mediaResult.error.message})。`, true);
+    } else {
+        setStatus(`${settingsMessage} 素材一覧を${mediaResult.source}から更新しました (${availableMedia.length} 件)。`, settingsError);
+    }
 }
 
 document.getElementById('openFileButton').addEventListener('click', openSettingsFile);
 document.getElementById('saveFileButton').addEventListener('click', saveSettings);
 previewButton.addEventListener('click', () => togglePreview());
 document.getElementById('closePreviewButton').addEventListener('click', () => togglePreview(false));
+document.getElementById('refreshMediaButton').addEventListener('click', () => refreshMediaFiles(true));
 window.addEventListener('message', event => {
     if (event.origin !== location.origin || event.source !== previewFrame.contentWindow) return;
     if (event.data?.type === 'signage-preview-ready') {
@@ -517,14 +595,6 @@ document.getElementById('addItem').addEventListener('click', () => {
     setDirty();
     render();
 });
-const mediaFiles = document.createElement('datalist');
-mediaFiles.id = 'mediaFiles';
-knownMedia.forEach(filename => {
-    const option = document.createElement('option');
-    option.value = filename;
-    mediaFiles.append(option);
-});
-document.body.append(mediaFiles);
 loadPublishedSettings();
 </script>
 </body>
